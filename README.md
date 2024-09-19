@@ -1,5 +1,5 @@
 ## Introduction
-This project provides a basic template for developing Python libraries that promote uniformity and centralization within the LabSonar/LPS environment.
+This project provides a machine learning Python libraries to promote uniformity and centralization within the LabSonar/LPS environment.
 
 ## Authors
 - **Developer**: [Fábio Oliveira](https://github.com/obs-fabio)
@@ -41,6 +41,11 @@ To generate the pip package as a .tar.gz file, navigate to the `src` directory a
 ```bash
 python setup.py sdist bdist_wheel
 ```
+
+### LPS Libraries Dependence
+This library depends on: 
+- [Utils](https://github.com/labsonar/utils)
+- [Signal_processing](https://github.com/labsonar/signal_processing)
 
 ## License
 
