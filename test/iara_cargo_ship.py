@@ -11,6 +11,9 @@ def main():
     output_dir = "./result/cargo_ship"
     os.makedirs(output_dir, exist_ok=True)
 
+    # group = 'Ship ID'
+    group = 'DETAILED TYPE'
+
     dcs = [
         iara.DC.A,
         iara.DC.B,
@@ -32,20 +35,25 @@ def main():
 
             selector = classifier.as_selector()
             df2 = selector.apply(df)
-            part = df2.groupby(['Ship ID']).size().reset_index(name=str(dc))
+            part = df2.groupby([group]).size().reset_index(name=str(dc))
 
             parts.append(part)
 
         merged = parts[0]
         for p in parts[1:]:
-            merged = pd.merge(merged, p, on="Ship ID", how="outer")
+            merged = pd.merge(merged, p, on=group, how="outer")
 
-        merged = merged.fillna(0).sort_values("Ship ID").reset_index(drop=True)
+        merged = merged.fillna(0).sort_values(group).reset_index(drop=True)
 
         print(f"\n########## {classifier.name} ##########")
         print(merged)
 
         merged.to_csv(os.path.join(output_dir,f"{classifier.name.lower()}.csv"))
+
+        col_sums = merged.select_dtypes(include='number').sum()
+        print(col_sums)
+
+
 
 if __name__ == "__main__":
     main()

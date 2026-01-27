@@ -6,10 +6,9 @@ import typing
 import numpy as np
 
 import lps_utils.quantities as lps_qty
+import lps_utils.hashable as utils_hash
 
-import lps_ml.core.hashable as ml_hash
-
-class AudioProcessor(ml_hash.Hashable):
+class AudioProcessor(utils_hash.Hashable):
     """ Abstract class to process audios and get processed windows. """
 
     @abc.abstractmethod
@@ -25,7 +24,7 @@ class AudioProcessor(ml_hash.Hashable):
             window_list (list of np.array):  A list of processed windows
         """
 
-class AudioPipeline(ml_hash.Hashable):
+class AudioPipeline(utils_hash.Hashable):
     """ Abstract class to process audios and get processed audios. """
 
     @abc.abstractmethod

@@ -16,7 +16,7 @@ import torch.utils.data as torch_data
 import lightning
 
 import lps_ml.core.cv as ml_cv
-import lps_ml.core.hashable as ml_hash
+import lps_utils.hashable as utils_hash
 import lps_ml.core.loader as ml_loader
 import lps_ml.core.processor as ml_proc
 
@@ -68,7 +68,7 @@ class ProcessedDataset(torch_data.Dataset):
             fragment = self.transform(fragment)
         return torch.from_numpy(fragment).float(), row['target']
 
-class AudioDataModule(BaseDataModule, ml_hash.Hashable):
+class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     """ Basic DataModule for process and load audio datasets. """
 
     def __init__(self,

@@ -12,9 +12,9 @@ import numpy as np
 import scipy.io.wavfile as scipy_wav
 
 import lps_utils.quantities as lps_qty
-import lps_ml.core.hashable as ml_hash
+import lps_utils.hashable as utils_hash
 
-class AudioFileLoader(ml_hash.Hashable):
+class AudioFileLoader(utils_hash.Hashable):
     """ Class to find and load audio files """
 
     def __init__(self,
