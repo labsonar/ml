@@ -20,7 +20,6 @@ class Filter(abc.ABC):
             pd.DataFrame: A filtered DataFrame.
         """
 
-
 class Constraint:
     """Define a single constraint for filtering or classification."""
     def __init__(self, header: str, values: typing.List[typing.Any]):
@@ -39,7 +38,6 @@ class Constraint:
         return isinstance(other, Constraint) and \
                self.header == other.header and \
                self.values == other.values
-
 
 class ConstraintFilter(Filter):
     """Filter that selects rows matching one or more constraint groups."""
@@ -85,10 +83,8 @@ class ConstraintFilter(Filter):
             mask = ~mask
         return input_df.loc[mask]
 
-
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ConstraintFilter) and self.constraints == other.constraints
-
 
 class LabelFilter(ConstraintFilter):
     """Simplified filter for selecting rows where column values are in a list."""
@@ -97,6 +93,15 @@ class LabelFilter(ConstraintFilter):
         super().__init__([Constraint(header=header, values=values)],
                          remove_elements_in=remove_elements_in)
 
+class CallbackFilter(Filter):
+    """Filter based on a boolean callback."""
+
+    def __init__(self, function: typing.Callable[[pd.Series], bool]):
+        self.function = function
+
+    def apply(self, input_df: pd.DataFrame) -> pd.DataFrame:
+        mask = input_df.apply(self.function, axis=1)
+        return input_df.loc[mask]
 
 class Target(abc.ABC):
     """Abstract base class to generate labelled dataframes."""

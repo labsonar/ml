@@ -219,6 +219,14 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
                 batch_size=self.batch_size,
                 num_workers=self.num_workers)
 
+    def all_dataloader(self, shuffle: bool = False):
+        return torch_data.DataLoader(
+            ProcessedDataset(self.dataframe, self.processed_dir, self.transform),
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            num_workers=self.num_workers
+        )
+
     def get_n_targets(self) -> int:
         return len(set(self.targets))
 

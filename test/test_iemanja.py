@@ -66,69 +66,71 @@ def _main():
     duration=lps_qty.Time.s(1)
     overlap=lps_qty.Time.s(0.75)
 
-    dm = ml_db.Synthetic(
+    dm = ml_db.Iemanja(
             file_processor=ml_procs.TimeProcessor(
                     fs_out=fs_out,
                     duration=duration,
                     overlap=overlap,
                     pipelines=ml_procs.CPADetector(duration, duration * 60)
                 ),
-            cv = ml_cv.FiveByTwo())
+            cv = ml_cv.FiveByTwo(),
+            simple_version=True
+            )
 
-    # print(ml_utils.format_header(60,"Dataset description"))
-    # print(dm.to_compile_df())
-    # print(ml_utils.format_header(60))
-    # print()
-    # print(ml_utils.format_header(60,"Training"))
-    # print()
-    # print(dm.to_df())
+    print(ml_utils.format_header(60,"Dataset description"))
+    print(dm.to_compile_df())
+    print(ml_utils.format_header(60))
+    print()
+    print(ml_utils.format_header(60,"Training"))
+    print()
+    print(dm.to_df())
 
-    # dm.to_df().to_csv("./result/identified.csv")
-    # return
+    dm.to_df().to_csv("./result/identified.csv")
+    return
 
-    # model = ml_model.MLP(
-    #     input_shape=dm.get_sample_shape(),
-    #     hidden_channels=[64, 16],
-    #     n_targets=dm.get_n_targets(),
-    #     dropout=0.2,
-    #     lr=1e-5
-    # )
+    model = ml_model.MLP(
+        input_shape=dm.get_sample_shape(),
+        hidden_channels=[64, 16],
+        n_targets=dm.get_n_targets(),
+        dropout=0.2,
+        lr=1e-5
+    )
 
-    # checkpoint_cb = lightning_call.ModelCheckpoint(
-    #     monitor="val_loss",
-    #     save_top_k=1,
-    #     mode="min",
-    #     filename=f"iara-{{epoch:02d}}-{{val_loss:.3f}}",
-    # )
-    # early_stop_cb = lightning_call.EarlyStopping(monitor="val_loss", patience=4, mode="min")
+    checkpoint_cb = lightning_call.ModelCheckpoint(
+        monitor="val_loss",
+        save_top_k=1,
+        mode="min",
+        filename=f"iara-{{epoch:02d}}-{{val_loss:.3f}}",
+    )
+    early_stop_cb = lightning_call.EarlyStopping(monitor="val_loss", patience=4, mode="min")
 
-    # logger = lightning_log.TensorBoardLogger(
-    #     "logs",
-    #     name="iara"
-    # )
+    logger = lightning_log.TensorBoardLogger(
+        "logs",
+        name="iara"
+    )
 
-    # trainer = lightning.Trainer(
-    #     max_epochs=args.max_epochs,
-    #     accelerator="auto",
-    #     devices="auto",
-    #     logger=logger,
-    #     callbacks=[checkpoint_cb, early_stop_cb],
-    # )
+    trainer = lightning.Trainer(
+        max_epochs=args.max_epochs,
+        accelerator="auto",
+        devices="auto",
+        logger=logger,
+        callbacks=[checkpoint_cb, early_stop_cb],
+    )
 
-    # trainer.fit(model, dm)
-    # trainer.test(model, datamodule=dm)
+    trainer.fit(model, dm)
+    trainer.test(model, datamodule=dm)
 
-    # train_acc = _evaluate_accuracy(model, dm.train_dataloader())
-    # val_acc   = _evaluate_accuracy(model, dm.val_dataloader())
-    # # test_acc  = _evaluate_accuracy(model, dm.test_dataloader())
+    train_acc = _evaluate_accuracy(model, dm.train_dataloader())
+    val_acc   = _evaluate_accuracy(model, dm.val_dataloader())
+    # test_acc  = _evaluate_accuracy(model, dm.test_dataloader())
 
-    # print(ml_utils.format_header(60))
-    # print()
-    # print(ml_utils.format_header(60,"Results"))
-    # print(f"Train accuracy:      {train_acc:.4f}")
-    # print(f"Validation accuracy: {val_acc:.4f}")
-    # # print(f"Test accuracy:       {test_acc:.4f}")
-    # print(ml_utils.format_header(60))
+    print(ml_utils.format_header(60))
+    print()
+    print(ml_utils.format_header(60,"Results"))
+    print(f"Train accuracy:      {train_acc:.4f}")
+    print(f"Validation accuracy: {val_acc:.4f}")
+    # print(f"Test accuracy:       {test_acc:.4f}")
+    print(ml_utils.format_header(60))
 
 if __name__ == "__main__":
     _main()
