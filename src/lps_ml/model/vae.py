@@ -48,6 +48,11 @@ class VAE(lightning.LightningModule):
         recon_x, mu, logvar = self.forward(x)
 
         recon_loss = torch.nn.functional.mse_loss(recon_x, x, reduction='sum')
+        # recon_loss = torch.nn.functional.binary_cross_entropy(
+        #     recon_x.view(x.size(0), -1),
+        #     x.view(x.size(0), -1),
+        #     reduction="sum"
+        # )
         kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         loss = recon_loss + self.beta * kld_loss
 

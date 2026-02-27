@@ -1,6 +1,7 @@
 import os
 import torch
 import torchvision
+import matplotlib.pyplot as plt
 
 import lightning
 import lightning.pytorch.callbacks as lightning_call
@@ -9,6 +10,43 @@ import lps_ml.datasets as ml_db
 import lps_ml.model as ml_model
 
 OUTPUT_DIR = "./result/vae"
+
+
+class LossPlotCallback(lightning.Callback):
+
+    def __init__(self):
+        super().__init__()
+        self.train_losses = []
+        self.val_losses = []
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        metrics = trainer.callback_metrics
+
+        if "train_loss_epoch" in metrics:
+            self.train_losses.append(
+                metrics["train_loss_epoch"].detach().cpu().item()
+            )
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        metrics = trainer.callback_metrics
+
+        if "val_loss" in metrics:
+            self.val_losses.append(
+                metrics["val_loss"].detach().cpu().item()
+            )
+
+    def on_fit_end(self, trainer, pl_module):
+
+        plt.figure()
+        plt.semilogx(self.train_losses, label="Train Loss")
+        plt.semilogx(self.val_losses, label="Validation Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.grid(True)
+
+        plt.savefig(os.path.join(OUTPUT_DIR, "loss_curve.png"))
+        plt.close()
 
 class VAEComparisonCallback(lightning.Callback):
 
@@ -53,25 +91,28 @@ def _main():
 
     model = ml_model.VAE.from_mlp(
         input_shape=[1, 28, 28],
-        hidden_dims=[512],
-        latent_dim=256,
+        hidden_dims=[512, 256],
+        latent_dim=128,
         beta=2.0
     )
 
     early_stop_callback = lightning_call.EarlyStopping(
         monitor="val_loss",
-        min_delta=0.001,
-        patience=10,
+        min_delta=0.1,
+        patience=20,
         verbose=True,
         mode="min"
     )
+
+    loss_plot_callback = LossPlotCallback()
 
     trainer = lightning.Trainer(
         max_epochs=200,
         accelerator="auto",
         callbacks=[
             VAEComparisonCallback(5),
-            early_stop_callback
+            early_stop_callback,
+            loss_plot_callback
         ],
         check_val_every_n_epoch=1
     )

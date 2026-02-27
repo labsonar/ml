@@ -64,7 +64,7 @@ def _main():
 
     fs_out=lps_qty.Frequency.khz(16)
     duration=lps_qty.Time.s(1)
-    overlap=lps_qty.Time.s(0.75)
+    overlap=lps_qty.Time.s(0)
 
     dm = ml_db.Iemanja(
             file_processor=ml_procs.TimeProcessor(
@@ -74,7 +74,8 @@ def _main():
                     pipelines=ml_procs.CPADetector(duration, duration * 60)
                 ),
             cv = ml_cv.FiveByTwo(),
-            simple_version=True
+            simple_version=True,
+            batch_size=16
             )
 
     print(ml_utils.format_header(60,"Dataset description"))
@@ -86,7 +87,6 @@ def _main():
     print(dm.to_df())
 
     dm.to_df().to_csv("./result/identified.csv")
-    return
 
     model = ml_model.MLP(
         input_shape=dm.get_sample_shape(),
