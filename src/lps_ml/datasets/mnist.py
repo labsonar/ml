@@ -12,8 +12,11 @@ import lps_ml.core as ml_core
 class MNIST(ml_core.BaseDataModule):
     """ Simple MNIST DataModule. """
 
-    def __init__(self, data_dir: str, batch_size: int = 32,
-                 num_workers: int = None, binary: bool = False):
+    def __init__(self,
+                 data_dir: str,
+                 batch_size: int = 32,
+                 num_workers: int = None,
+                 binary: bool = False):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
@@ -32,7 +35,8 @@ class MNIST(ml_core.BaseDataModule):
 
         transform = torch_trf.transforms.Compose([
             torch_trf.transforms.ToTensor(),
-            torch_trf.transforms.Normalize((0.1307,), (0.3081,)),
+            # torch_trf.transforms.Normalize((0.1307,), (0.3081,)), # original scale
+            torch_trf.transforms.Lambda(lambda x: (x * 2) - 1) # scale to [-1,1] more like audio
         ])
 
         self.mnist_test = torch_set.MNIST(self.data_dir, train=False,
