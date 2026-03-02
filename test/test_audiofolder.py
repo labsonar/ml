@@ -44,7 +44,7 @@ def _main():
                 pipelines=[ml_procs.ToFloatConverter()]
             ),
         input_dir=args.input_dir,
-        # selection = ml_sel.Selector(ml_sel.LabelTarget(column="Class", values= ["env"])),
+        selection = ml_sel.Selector(ml_sel.LabelTarget(column="Class", values= ["cargo"])),
         batch_size=4
     )
 

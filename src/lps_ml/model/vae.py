@@ -119,3 +119,111 @@ class VAE(lightning.LightningModule):
                    input_shape = input_shape,
                    latent_dim = latent_dim,
                    beta = beta)
+
+    @classmethod
+    def from_cnn(cls,
+                input_shape: typing.Iterable[int],
+                latent_dim: int,
+                hidden_channels: typing.Iterable[int],
+                kernel_size: int = 15,
+                beta: float = 1.0):
+        """
+        Named constructor que cria uma VAE baseada em CNN 1D para áudio no domínio do tempo.
+        """
+
+        assert len(input_shape) == 1, "from_cnn suporta apenas áudio 1D"
+
+        input_length = input_shape[0]
+
+        # =========================
+        # Encoder
+        # =========================
+        encoder_layers = []
+        in_ch = 1
+        current_length = input_length
+
+        for out_ch in hidden_channels:
+            encoder_layers.append(
+                torch.nn.Conv1d(
+                    in_ch,
+                    out_ch,
+                    kernel_size=kernel_size,
+                    stride=2,
+                    padding=kernel_size // 2
+                )
+            )
+            encoder_layers.append(torch.nn.BatchNorm1d(out_ch))
+            encoder_layers.append(torch.nn.ReLU())
+            in_ch = out_ch
+            current_length = (current_length + 1) // 2  # aproximação para stride=2
+
+        encoder_layers.append(torch.nn.Flatten())
+
+        encoder_conv = torch.nn.Sequential(*encoder_layers)
+
+        encoder_fc = torch.nn.Linear(
+            hidden_channels[-1] * current_length,
+            latent_dim * 2
+        )
+
+        encoder = torch.nn.Sequential(
+            torch.nn.Unflatten(1, (1, input_length)),
+            encoder_conv,
+            encoder_fc
+        )
+
+        # =========================
+        # Decoder
+        # =========================
+        decoder_input_dim = hidden_channels[-1] * current_length
+
+        decoder_fc = torch.nn.Linear(latent_dim, decoder_input_dim)
+
+        decoder_layers = []
+        hidden_rev = list(reversed(hidden_channels))
+
+        in_ch = hidden_rev[0]
+
+        decoder_layers.append(
+            torch.nn.Unflatten(1, (in_ch, current_length))
+        )
+
+        for out_ch in hidden_rev[1:]:
+            decoder_layers.append(
+                torch.nn.ConvTranspose1d(
+                    in_ch,
+                    out_ch,
+                    kernel_size=kernel_size,
+                    stride=2,
+                    padding=kernel_size // 2,
+                    output_padding=1
+                )
+            )
+            decoder_layers.append(torch.nn.BatchNorm1d(out_ch))
+            decoder_layers.append(torch.nn.ReLU())
+            in_ch = out_ch
+
+        # camada final
+        decoder_layers.append(
+            torch.nn.Conv1d(
+                in_ch,
+                1,
+                kernel_size=kernel_size,
+                padding=kernel_size // 2
+            )
+        )
+        decoder_layers.append(torch.nn.Tanh())
+
+        decoder = torch.nn.Sequential(
+            decoder_fc,
+            *decoder_layers,
+            torch.nn.Flatten()
+        )
+
+        return cls(
+            encoder=encoder,
+            decoder=decoder,
+            input_shape=input_shape,
+            latent_dim=latent_dim,
+            beta=beta
+        )

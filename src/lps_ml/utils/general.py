@@ -11,6 +11,8 @@ import shutil
 import numpy as np
 
 import torch
+import contextlib
+
 
 def set_seed():
     """ Set random seed for reproducibility. """
@@ -20,7 +22,6 @@ def set_seed():
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-
 
 def backup_folder(base_dir, time_str_format = "%Y%m%d-%H%M%S"):
     """Method to backup all files in a folder in a timestamp based folder
@@ -53,3 +54,18 @@ def format_header(size: int, title: str = ""):
     before = (size - len(title) - 2)//2
     after = size - before - len(title) - 2
     return f"{'='*before} {title} {'='*after}"
+
+@contextlib.contextmanager
+def evaluating(model):
+    """
+    Context manager that temporarily sets a PyTorch model to evaluation mode.
+
+    This utility preserves the original training state of the model.
+    """
+    was_training = model.training
+    model.eval()
+    try:
+        yield
+    finally:
+        if was_training:
+            model.train()

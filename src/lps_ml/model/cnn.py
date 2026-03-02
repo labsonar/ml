@@ -18,6 +18,7 @@ class CNN(lps_mlp.MLP):
         conv_activation: typing.Union[torch.nn.Module, typing.Callable] = None,
         conv_pooling: typing.Optional[typing.Callable] = None,
         conv_pooling_size: typing.List[int] = None,
+        conv_dilation: typing.Union[int, typing.List[int]] = 1,
         conv_dropout: float = 0.5,
         batch_norm: typing.Optional[typing.Callable] = None,
         kernel_size: int = 5,
@@ -45,12 +46,25 @@ class CNN(lps_mlp.MLP):
             raise ValueError(f"CNN expects as input an image in the format: \
                                     channel x width x height (current {input_shape})")
 
+        if isinstance(conv_dilation, int):
+            conv_dilation = [conv_dilation] * len(conv_n_neurons)
 
         conv_layers = []
         conv_channels = [input_shape[0]] + conv_n_neurons
         for i in range(1, len(conv_channels)):
-            conv_layers.append(torch.nn.Conv2d(conv_channels[i-1], conv_channels[i],
-                                               kernel_size=kernel_size, padding=padding))
+
+            dilation = conv_dilation[i-1]
+            effective_kernel = kernel_size + (kernel_size - 1) * (conv_dilation - 1)
+            current_padding = int((effective_kernel - 1) / 2)
+
+            conv_layers.append(torch.nn.Conv2d(
+                    conv_channels[i-1],
+                    conv_channels[i],
+                    kernel_size=kernel_size,
+                    padding=current_padding,
+                    dilation=dilation
+                ))
+
             if batch_norm is not None:
                 conv_layers.append(batch_norm(conv_channels[i]))
             if conv_dropout != 0 and i != 0:
