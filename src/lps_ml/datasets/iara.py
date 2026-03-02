@@ -261,8 +261,15 @@ class IARA(ml_core.AudioDataModule):
     @staticmethod
     def loader(data_base_dir: str) -> ml_core.AudioFileLoader:
         """ Get AudioFileLoader for IARA dataset. """
-        return ml_core.AudioFileLoader(data_base_dir=data_base_dir,
-                extract_id=lambda filename: int(filename.rsplit('-', maxsplit=1)[-1]))
+        import os
+
+        return ml_core.AudioFileLoader(
+            data_base_dir=data_base_dir,
+            extract_id=lambda rel_path: int(
+                os.path.splitext(os.path.basename(rel_path))[0]
+                .rsplit('-', maxsplit=1)[-1]
+            )
+        )
 
 
     def __init__(self,

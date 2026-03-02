@@ -14,8 +14,12 @@ class FourClasses(ml_core.AudioDataModule):
     @staticmethod
     def loader(data_base_dir: str) -> ml_core.AudioFileLoader:
         """ Get AudioFileLoader for FourClasses dataset. """
-        return ml_core.AudioFileLoader(data_base_dir=data_base_dir,
-                extract_id=lambda name: int(name[-2:]))
+        return ml_core.AudioFileLoader(
+            data_base_dir=data_base_dir,
+            extract_id=lambda rel_path: int(
+                os.path.splitext(os.path.basename(rel_path))[0][-2:]
+            )
+        )
 
     @staticmethod
     def as_df() -> pd.DataFrame:
@@ -35,9 +39,13 @@ class FourClasses(ml_core.AudioDataModule):
                  num_workers: int = None):
 
         df = FourClasses.as_df()
-        selection = selection or ml_sel.Selector(
-                                        ml_sel.LabelTarget.from_dataframe(column="Class",
-                                                                          input_df=df))
+
+        if selection is None:
+            unique_targets = sorted(df["Class"].unique())
+
+            selection = ml_sel.Selector(
+                ml_sel.LabelTarget(column="Class", values=unique_targets)
+            )
 
         super().__init__(file_loader = FourClasses.loader(data_base_dir=data_dir),
                          file_processor = file_processor,

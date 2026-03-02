@@ -29,8 +29,14 @@ class Iemanja(ml_core.AudioDataModule):
     @staticmethod
     def loader(data_base_dir: str) -> ml_core.AudioFileLoader:
         """ Get AudioFileLoader for Synthetical dataset. """
-        return ml_core.AudioFileLoader(data_base_dir=data_base_dir,
-                extract_id=int)
+        import os
+
+        return ml_core.AudioFileLoader(
+            data_base_dir=data_base_dir,
+            extract_id=lambda rel_path: int(
+                os.path.splitext(os.path.basename(rel_path))[0]
+            )
+        )
 
     @staticmethod
     def load_df(dataset_dir: str) -> pd.DataFrame:

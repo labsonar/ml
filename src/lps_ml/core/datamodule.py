@@ -163,7 +163,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         """
         Loads the metadata CSV and generates cross-validation folds.
         """
-        if os.path.exists(self.csv_file):
+        if not os.path.exists(self.csv_file):
             self.prepare_data()
 
         df = pd.read_csv(self.csv_file)

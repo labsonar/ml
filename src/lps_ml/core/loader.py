@@ -39,10 +39,13 @@ class AudioFileLoader(utils_hash.Hashable):
                 if extension.lower() != ".wav":
                     continue
 
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, self.data_base_dir)
+
                 try:
-                    file_id = self.extract_id(filename)
+                    file_id = self.extract_id(rel_path)
                 except Exception as e: # pylint: disable=broad-exception-caught
-                    logging.warning("Fail to extract ID from %s: %s", filename, e)
+                    logging.warning("Fail to extract ID from %s: %s", rel_path, e)
                     continue
 
                 if isinstance(file_id, int):
