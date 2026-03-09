@@ -10,6 +10,7 @@ import lightning.pytorch.callbacks as lightning_call
 import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
 import lps_sp.acoustical.broadband as lps_bb
+import lps_sp.acoustical.analysis as lps_analysis
 import lps_ml.utils.general as ml_utils
 import lps_ml.datasets as ml_db
 import lps_ml.model as ml_model
@@ -93,19 +94,44 @@ class VAEComparisonCallback(lightning.Callback):
             )
             psd_filename = os.path.join(
                 OUTPUT_DIR,
-                f"{tag}_sample_{i}.png"
+                f"{tag}_sample_{i}_psd.png"
+            )
+            demon_filename = os.path.join(
+                OUTPUT_DIR,
+                f"{tag}_sample_{i}_demon.png"
+            )
+            lofar_filename = os.path.join(
+                OUTPUT_DIR,
+                f"{tag}_sample_{i}_lofar.png"
             )
 
             self._save_audio(x_in, self.fs, wav_in)
             self._save_audio(x_out, self.fs, wav_filename)
 
+            x_in = x_in.numpy()
+            x_out = x_out.numpy()
+
             lps_bb.plot_psds(
                 filename=psd_filename,
-                noises=[x_in.numpy(), x_out.numpy()],
+                noises=[x_in, x_out],
                 labels=["Input", "Reconstructed"],
                 fs=lps_qty.Frequency.hz(self.fs),
                 window_size=1024*16,
                 overlap=0.5,
+            )
+
+            lps_bb.plot_demon_lines(
+                filename=demon_filename,
+                signals=[x_in, x_out],
+                labels=["Input", "Reconstructed"],
+                fs=lps_qty.Frequency.hz(self.fs),
+            )
+
+            lps_analysis.plot_spectral_analysis(
+                filename=lofar_filename,
+                signals=[x_in, x_out],
+                labels=["Input", "Reconstructed"],
+                fs=lps_qty.Frequency.hz(self.fs),
             )
 
     def generate_reconstructions(
@@ -151,7 +177,6 @@ class VAEComparisonCallback(lightning.Callback):
 
             self._save_audio(x_gen, self.fs, filename)
 
-
     def on_train_epoch_end(self, trainer, pl_module):
 
         if trainer.current_epoch % self.every_n_epochs != 0:
@@ -173,14 +198,13 @@ def _main():
 
 
     fs=lps_qty.Frequency.khz(16)
-    duration=lps_qty.Time.s(5)
-    overlap=lps_qty.Time.s(2.5)
-    n_samples = int(fs * duration)
+    n_samples=int(2**16)
+    overlap=int(2**15)
 
     dm = ml_db.AudioFolder(
-        file_processor=ml_procs.TimeProcessor(
+        file_processor=ml_procs.SampleProcessor(
                 fs_out=fs,
-                duration=duration,
+                n_samples=n_samples,
                 overlap=overlap,
                 pipelines=[ml_procs.ToFloatConverter()]
             ),
@@ -199,22 +223,22 @@ def _main():
     #             ),
     #         cv = ml_cv.FiveByTwo(),
     #         simple_version=True,
-    #         batch_size=64,
+    #         batch_size=16,
     #         num_workers=1
     #         )
 
-    model = ml_model.VAE.from_mlp(
-        input_shape=[n_samples],
-        hidden_dims=[512],
-        latent_dim=128,
-        beta=1.0
-    )
-
-    # model = ml_model.VAE.from_cnn(
-    #     input_shape = [n_samples],
-    #     hidden_channels = [8, 16, 64],
-    #     latent_dim = 258,
+    # model = ml_model.VAE.from_mlp(
+    #     input_shape=[n_samples],
+    #     hidden_dims=[512],
+    #     latent_dim=128,
+    #     beta=1.0
     # )
+
+    model = ml_model.VAE.from_conv1d(
+        input_length = n_samples,
+        hidden_channels = [8, 16, 64],
+        latent_dim = 258,
+    )
 
     early_stop_callback = lightning_call.EarlyStopping(
         monitor="val_loss",

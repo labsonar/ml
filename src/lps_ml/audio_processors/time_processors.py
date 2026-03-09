@@ -123,6 +123,39 @@ class TimeProcessor(ml_core.AudioProcessor):
 
         return windows
 
+class SampleProcessor(ml_core.AudioProcessor):
+    """ Simple time processor for resampling, pipelined, and sliding windowing. """
+
+    def __init__(self,
+                 n_samples: int,
+                 overlap: int,
+                 fs_out: lps_qty.Frequency,
+                 pipelines: typing.Union[ml_core.AudioPipeline,
+                                         typing.List[ml_core.AudioPipeline]] = None):
+        super().__init__()
+        self.n_samples = n_samples
+        self.overlap = overlap
+
+        if pipelines is None:
+            self.pipelines = []
+        elif isinstance(pipelines, ml_core.AudioPipeline):
+            self.pipelines = [pipelines]
+        else:
+            self.pipelines = pipelines
+
+        if fs_out is not None:
+            self.pipelines.insert(0, Resampler(fs_out=fs_out))
+
+    def process(self, fs: lps_qty.Frequency, data: np.array) -> typing.List[np.array]:
+
+        step = self.n_samples - self.overlap
+
+        windows = []
+        for start in range(0, len(data) - self.n_samples + 1, step):
+            windows.append(data[start:start + self.n_samples])
+
+        return windows
+
 class ToFloatConverter(ml_core.AudioPipeline):
     """AudioPipeline that converts int16 audio to float32 in range [-1, 1]."""
 

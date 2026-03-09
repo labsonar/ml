@@ -80,10 +80,8 @@ class VAE(lightning.LightningModule):
 
         return metrics["loss"]
 
-
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=1e-3)
-
 
     @classmethod
     def from_mlp(cls,
@@ -121,109 +119,80 @@ class VAE(lightning.LightningModule):
                    beta = beta)
 
     @classmethod
-    def from_cnn(cls,
-                input_shape: typing.Iterable[int],
-                latent_dim: int,
-                hidden_channels: typing.Iterable[int],
-                kernel_size: int = 15,
-                beta: float = 1.0):
-        """
-        Named constructor que cria uma VAE baseada em CNN 1D para áudio no domínio do tempo.
-        """
+    def from_conv1d(cls,
+                    input_length: int,
+                    latent_dim: int,
+                    hidden_channels = [32, 64, 128],
+                    beta: float = 1.0):
 
-        assert len(input_shape) == 1, "from_cnn suporta apenas áudio 1D"
+        class ConvEncoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
 
-        input_length = input_shape[0]
+                self.conv = torch.nn.Sequential(
+                    torch.nn.Conv1d(1, hidden_channels[0], 4, stride=2, padding=1),
+                    torch.nn.ReLU(),
 
-        # =========================
-        # Encoder
-        # =========================
-        encoder_layers = []
-        in_ch = 1
-        current_length = input_length
+                    torch.nn.Conv1d(hidden_channels[0], hidden_channels[1], 4, stride=2, padding=1),
+                    torch.nn.ReLU(),
 
-        for out_ch in hidden_channels:
-            encoder_layers.append(
-                torch.nn.Conv1d(
-                    in_ch,
-                    out_ch,
-                    kernel_size=kernel_size,
-                    stride=2,
-                    padding=kernel_size // 2
+                    torch.nn.Conv1d(hidden_channels[1], hidden_channels[2], 4, stride=2, padding=1),
+                    torch.nn.ReLU(),
                 )
-            )
-            encoder_layers.append(torch.nn.BatchNorm1d(out_ch))
-            encoder_layers.append(torch.nn.ReLU())
-            in_ch = out_ch
-            current_length = (current_length + 1) // 2  # aproximação para stride=2
 
-        encoder_layers.append(torch.nn.Flatten())
+                self.final_length = input_length // 8
+                self.flatten_dim = hidden_channels[2] * self.final_length
 
-        encoder_conv = torch.nn.Sequential(*encoder_layers)
+                self.fc = torch.nn.Linear(self.flatten_dim, latent_dim * 2)
 
-        encoder_fc = torch.nn.Linear(
-            hidden_channels[-1] * current_length,
-            latent_dim * 2
-        )
+            def forward(self, x):
+                if x.dim() == 2:
+                    x = x.unsqueeze(1)
 
-        encoder = torch.nn.Sequential(
-            torch.nn.Unflatten(1, (1, input_length)),
-            encoder_conv,
-            encoder_fc
-        )
+                x = self.conv(x)
+                x = x.view(x.size(0), -1)
+                return self.fc(x)
 
-        # =========================
-        # Decoder
-        # =========================
-        decoder_input_dim = hidden_channels[-1] * current_length
 
-        decoder_fc = torch.nn.Linear(latent_dim, decoder_input_dim)
+        class ConvDecoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
 
-        decoder_layers = []
-        hidden_rev = list(reversed(hidden_channels))
+                self.initial_length = input_length // 8
+                self.fc = torch.nn.Linear(latent_dim,
+                                        hidden_channels[2] * self.initial_length)
 
-        in_ch = hidden_rev[0]
+                self.deconv = torch.nn.Sequential(
+                    torch.nn.ConvTranspose1d(hidden_channels[2],
+                                            hidden_channels[1],
+                                            4, stride=2, padding=1),
+                    torch.nn.ReLU(),
 
-        decoder_layers.append(
-            torch.nn.Unflatten(1, (in_ch, current_length))
-        )
+                    torch.nn.ConvTranspose1d(hidden_channels[1],
+                                            hidden_channels[0],
+                                            4, stride=2, padding=1),
+                    torch.nn.ReLU(),
 
-        for out_ch in hidden_rev[1:]:
-            decoder_layers.append(
-                torch.nn.ConvTranspose1d(
-                    in_ch,
-                    out_ch,
-                    kernel_size=kernel_size,
-                    stride=2,
-                    padding=kernel_size // 2,
-                    output_padding=1
+                    torch.nn.ConvTranspose1d(hidden_channels[0],
+                                            1,
+                                            4, stride=2, padding=1),
+                    torch.nn.Tanh(),
                 )
-            )
-            decoder_layers.append(torch.nn.BatchNorm1d(out_ch))
-            decoder_layers.append(torch.nn.ReLU())
-            in_ch = out_ch
 
-        # camada final
-        decoder_layers.append(
-            torch.nn.Conv1d(
-                in_ch,
-                1,
-                kernel_size=kernel_size,
-                padding=kernel_size // 2
-            )
-        )
-        decoder_layers.append(torch.nn.Tanh())
+            def forward(self, z):
+                x = self.fc(z)
+                x = x.view(z.size(0),
+                        hidden_channels[2],
+                        self.initial_length)
+                return self.deconv(x)
 
-        decoder = torch.nn.Sequential(
-            decoder_fc,
-            *decoder_layers,
-            torch.nn.Flatten()
-        )
+        encoder = ConvEncoder()
+        decoder = ConvDecoder()
 
         return cls(
             encoder=encoder,
             decoder=decoder,
-            input_shape=input_shape,
+            input_shape=[1, input_length],
             latent_dim=latent_dim,
             beta=beta
         )
