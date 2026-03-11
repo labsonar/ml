@@ -280,11 +280,8 @@ def _main():
         epoch_tag="before_training_latent"
     )
 
-
     trainer.fit(model, datamodule=dm)
     print("Treino concluído. Gerando reconstruções finais...")
-
-    val_loader = dm.val_dataloader()
 
     vae_comp.generate_reconstructions(
         model=model,

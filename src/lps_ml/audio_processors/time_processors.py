@@ -159,9 +159,6 @@ class SampleProcessor(ml_core.AudioProcessor):
 class ToFloatConverter(ml_core.AudioPipeline):
     """AudioPipeline that converts int16 audio to float32 in range [-1, 1]."""
 
-    def __init__(self):
-        super().__init__()
-
     def process(
         self,
         fs: lps_qty.Frequency,
@@ -170,4 +167,5 @@ class ToFloatConverter(ml_core.AudioPipeline):
 
         data_float = data.astype(np.float32) / 2**15
         data_float = np.clip(data_float, -1.0, 1.0)
+        data_float = data_float[np.newaxis, :]
         return fs, data_float

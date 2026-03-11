@@ -146,9 +146,6 @@ class VAE(lightning.LightningModule):
                 self.fc = torch.nn.Linear(self.flatten_dim, latent_dim * 2)
 
             def forward(self, x):
-                if x.dim() == 2:
-                    x = x.unsqueeze(1)
-
                 x = self.conv(x)
                 x = x.view(x.size(0), -1)
                 return self.fc(x)
@@ -192,7 +189,7 @@ class VAE(lightning.LightningModule):
         return cls(
             encoder=encoder,
             decoder=decoder,
-            input_shape=[1, input_length],
+            input_shape=input_length,
             latent_dim=latent_dim,
             beta=beta
         )
