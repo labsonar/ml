@@ -5,6 +5,7 @@ import torch.nn
 import lightning
 
 import lps_ml.model.mlp as ml_mlp
+import lps_ml.model.cnn as ml_cnn
 
 class VAE(lightning.LightningModule):
 
@@ -117,79 +118,3 @@ class VAE(lightning.LightningModule):
                    input_shape = input_shape,
                    latent_dim = latent_dim,
                    beta = beta)
-
-    @classmethod
-    def from_conv1d(cls,
-                    input_length: int,
-                    latent_dim: int,
-                    hidden_channels = [32, 64, 128],
-                    beta: float = 1.0):
-
-        class ConvEncoder(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-
-                self.conv = torch.nn.Sequential(
-                    torch.nn.Conv1d(1, hidden_channels[0], 4, stride=2, padding=1),
-                    torch.nn.ReLU(),
-
-                    torch.nn.Conv1d(hidden_channels[0], hidden_channels[1], 4, stride=2, padding=1),
-                    torch.nn.ReLU(),
-
-                    torch.nn.Conv1d(hidden_channels[1], hidden_channels[2], 4, stride=2, padding=1),
-                    torch.nn.ReLU(),
-                )
-
-                self.final_length = input_length // 8
-                self.flatten_dim = hidden_channels[2] * self.final_length
-
-                self.fc = torch.nn.Linear(self.flatten_dim, latent_dim * 2)
-
-            def forward(self, x):
-                x = self.conv(x)
-                x = x.view(x.size(0), -1)
-                return self.fc(x)
-
-
-        class ConvDecoder(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
-
-                self.initial_length = input_length // 8
-                self.fc = torch.nn.Linear(latent_dim,
-                                        hidden_channels[2] * self.initial_length)
-
-                self.deconv = torch.nn.Sequential(
-                    torch.nn.ConvTranspose1d(hidden_channels[2],
-                                            hidden_channels[1],
-                                            4, stride=2, padding=1),
-                    torch.nn.ReLU(),
-
-                    torch.nn.ConvTranspose1d(hidden_channels[1],
-                                            hidden_channels[0],
-                                            4, stride=2, padding=1),
-                    torch.nn.ReLU(),
-
-                    torch.nn.ConvTranspose1d(hidden_channels[0],
-                                            1,
-                                            4, stride=2, padding=1),
-                    torch.nn.Tanh(),
-                )
-
-            def forward(self, z):
-                x = self.fc(z)
-                x = x.view(z.size(0),
-                        hidden_channels[2],
-                        self.initial_length)
-                return self.deconv(x)
-
-        encoder = ConvEncoder()
-        decoder = ConvDecoder()
-
-        return cls(
-            encoder=encoder,
-            decoder=decoder,
-            input_shape=input_length,
-            latent_dim=latent_dim,
-            beta=beta
-        )

@@ -13,119 +13,8 @@ from scipy.optimize import fmin
 import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
 import lps_sp.acoustical.broadband as lps_bb
+import lps_ml.utils.pqmf as ml_pqmf
 
-
-
-# ============================================================
-# PQMF CORE (RAVE simplified)
-# ============================================================
-
-def reverse_half(x):
-    mask = torch.ones_like(x)
-    mask[..., 1::2, ::2] = -1
-    return x * mask
-
-
-def center_pad_next_pow_2(x):
-    next_2 = 2 ** math.ceil(math.log2(x.shape[-1]))
-    pad = next_2 - x.shape[-1]
-    return nn.functional.pad(x, (pad // 2, pad // 2 + int(pad % 2)))
-
-
-def get_qmf_bank(h, n_band):
-
-    k = torch.arange(n_band).reshape(-1, 1)
-    N = h.shape[-1]
-
-    t = torch.arange(-(N // 2), N // 2 + 1)
-
-    p = (-1) ** k * math.pi / 4
-
-    mod = torch.cos((2 * k + 1) * math.pi / (2 * n_band) * t + p)
-
-    hk = 2 * h * mod
-
-    return hk
-
-
-def kaiser_filter(wc, atten):
-
-    N, beta = kaiserord(atten, wc / np.pi)
-    N = 2 * (N // 2) + 1
-
-    h = firwin(N, wc, window=('kaiser', beta), scale=False, nyq=np.pi)
-
-    return h
-
-
-def loss_wc(wc, atten, M):
-
-    h = kaiser_filter(wc, atten)
-
-    g = np.convolve(h, h[::-1], "full")
-
-    g = abs(g[g.shape[-1] // 2::2 * M][1:])
-
-    return np.max(g)
-
-
-def get_prototype(atten, M):
-
-    wc = fmin(lambda w: loss_wc(w, atten, M), 1 / M, disp=0)[0]
-
-    return kaiser_filter(wc, atten)
-
-
-class PQMF(nn.Module):
-
-    def __init__(self, attenuation=100, n_band=16):
-
-        super().__init__()
-
-        h = get_prototype(attenuation, n_band)
-
-        h = torch.from_numpy(h).float()
-
-        hk = get_qmf_bank(h, n_band)
-
-        hk = center_pad_next_pow_2(hk)
-
-        self.register_buffer("hk", hk)
-
-        self.n_band = n_band
-
-    def analysis(self, x):
-
-        x = nn.functional.conv1d(
-            x,
-            self.hk.unsqueeze(1),
-            stride=self.n_band,
-            padding=self.hk.shape[-1] // 2,
-        )[..., :-1]
-
-        return reverse_half(x)
-
-    def synthesis(self, x):
-
-        x = reverse_half(x)
-
-        hk = self.hk.flip(-1)
-
-        y = torch.zeros(
-            x.shape[0],
-            x.shape[1],
-            self.n_band * x.shape[-1],
-        ).to(x)
-
-        y[..., ::self.n_band] = x * self.n_band
-
-        y = nn.functional.conv1d(
-            y,
-            hk.unsqueeze(0),
-            padding=hk.shape[-1] // 2,
-        )[..., 1:]
-
-        return y
 
 
 # ============================================================
@@ -197,15 +86,15 @@ def main():
 
     print("Input shape:", waveform.shape)
 
-    pqmf = PQMF(attenuation=args.atten, n_band=args.bands)
+    pqmf = ml_pqmf.PQMF(attenuation=args.atten, n_band=args.bands)
 
     with torch.no_grad():
 
-        subbands = pqmf.analysis(waveform)
+        subbands = pqmf(waveform)
 
         print("subbands shape:", subbands.shape)
 
-        recon = pqmf.synthesis(subbands)
+        recon = pqmf.reverse(subbands)
 
     input_signal = waveform.squeeze().cpu().numpy()
 
@@ -271,7 +160,6 @@ def main():
         labels=labels,
         fs=lps_qty.Frequency.hz(fs),
     )
-
 
 if __name__ == "__main__":
     main()

@@ -76,7 +76,7 @@ def _main():
             lr=args.lr,
         )
     elif args.model == "cnn":
-        model = ml_model.CNN(
+        model = ml_model.CNN2D(
             input_shape=dm.get_sample_shape(),
             conv_n_neurons=[32, 64],
             n_targets=dm.get_n_targets(),

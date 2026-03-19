@@ -22,7 +22,6 @@ class Resampler(ml_core.AudioPipeline):
         decimated_signal = lps_signal.decimate(data, fs/self.fs_out)
         return self.fs_out, decimated_signal
 
-
 class CPADetector(ml_core.AudioPipeline):
     """ AudioPipeline that detects the highest energy point (CPA) and cuts a centered window."""
 
@@ -148,6 +147,9 @@ class SampleProcessor(ml_core.AudioProcessor):
 
     def process(self, fs: lps_qty.Frequency, data: np.array) -> typing.List[np.array]:
 
+        for pipeline in self.pipelines:
+            fs, data = pipeline.process(fs=fs, data=data)
+
         step = self.n_samples - self.overlap
 
         windows = []
@@ -166,6 +168,27 @@ class ToFloatConverter(ml_core.AudioPipeline):
     ) -> typing.Tuple[lps_qty.Frequency, np.ndarray]:
 
         data_float = data.astype(np.float32) / 2**15
+        print("############  # # # # # #############")
+        print("data_float min:", np.min(data_float), "max:", np.max(data_float))
         data_float = np.clip(data_float, -1.0, 1.0)
-        data_float = data_float[np.newaxis, :]
         return fs, data_float
+
+class SimpleProcessor(ml_core.AudioProcessor):
+    """ Simple processor that applies a list of pipelines. """
+
+    def __init__(self,
+                 pipelines: typing.Union[ml_core.AudioPipeline,
+                                         typing.List[ml_core.AudioPipeline]]):
+        super().__init__()
+
+        if isinstance(pipelines, ml_core.AudioPipeline):
+            self.pipelines = [pipelines]
+        else:
+            self.pipelines = pipelines
+
+    def process(self, fs: lps_qty.Frequency, data: np.array) -> typing.List[np.array]:
+
+        for pipeline in self.pipelines:
+            fs, data = pipeline.process(fs=fs, data=data)
+
+        return [data]

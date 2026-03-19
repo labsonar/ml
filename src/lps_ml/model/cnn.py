@@ -5,9 +5,9 @@ import typing
 import torch
 
 import lps_ml.model.mlp as lps_mlp
+from lps_utils.log import warning
 
-
-class CNN(lps_mlp.MLP):
+class CNN2D(lps_mlp.MLP):
     """ CNN with MLP head, compatible with binary or multiclass classification. """
 
     def __init__(

@@ -64,6 +64,10 @@ class ProcessedDataset(torch_data.Dataset):
         row = self.df.iloc[idx]
         fragment_path = os.path.join(self.processed_dir, f"{row['id_fragment']}.npy")
         fragment = np.load(fragment_path)
+
+        if fragment.ndim == 1:
+            fragment = fragment[np.newaxis, :]
+
         if self.transform:
             fragment = self.transform(fragment)
         return torch.from_numpy(fragment).float(), row['target']

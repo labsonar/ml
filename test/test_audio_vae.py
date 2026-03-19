@@ -1,5 +1,6 @@
 import os
 import random
+import argparse
 import torch
 import torchvision
 import matplotlib.pyplot as plt
@@ -17,9 +18,9 @@ import lps_ml.model as ml_model
 import lps_ml.core.cv as ml_cv
 import lps_ml.audio_processors as ml_procs
 import lps_ml.datasets.selection as ml_sel
+import lps_ml.model.audio_vae as lps_audio_vae
 
-OUTPUT_DIR = "./result/vae_iemanja"
-
+OUTPUT_DIR = "./result/audio_vae"
 
 class LossPlotCallback(lightning.Callback):
 
@@ -31,9 +32,9 @@ class LossPlotCallback(lightning.Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
 
-        if "train_loss" in metrics:
+        if "train/loss" in metrics:
             self.train_losses.append(
-                metrics["train_loss"].detach().cpu().item()
+                metrics["train/loss"].detach().cpu().item()
             )
 
     def on_validation_epoch_end(self, trainer, pl_module):
@@ -48,7 +49,7 @@ class LossPlotCallback(lightning.Callback):
 
         plt.figure()
         plt.semilogx(self.train_losses, label="Train Loss")
-        plt.semilogx(self.val_losses, label="Validation Loss")
+        # plt.semilogx(self.val_losses, label="Validation Loss")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.legend()
@@ -86,7 +87,7 @@ class VAEComparisonCallback(lightning.Callback):
 
             wav_filename = os.path.join(
                 OUTPUT_DIR,
-                f"{tag}_sample_{i}.wav"
+                f"sample_{i}.wav"
             )
             wav_in = os.path.join(
                 OUTPUT_DIR,
@@ -193,13 +194,37 @@ class VAEComparisonCallback(lightning.Callback):
 
 
 def _main():
+    parser = argparse.ArgumentParser(
+        description="Test AudioFolder dataset"
+    )
+    parser.add_argument(
+        "input_dir",
+        type=str,
+        help="Root directory containing class subfolders"
+    )
+    args = parser.parse_args()
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+    torch.set_float32_matmul_precision('medium')
+    ml_utils.set_seed()
 
     fs=lps_qty.Frequency.khz(16)
-    n_samples=int(2**16)
-    overlap=int(2**15)
+    n_samples=int(2**17)
+    overlap=int(2**16)
+
+    # dm = ml_db.AudioFolder(
+    #     file_processor=ml_procs.SampleProcessor(
+    #             fs_out=fs,
+    #             n_samples=n_samples,
+    #             overlap=overlap,
+    #             pipelines=[ml_procs.ToFloatConverter()]
+    #         ),
+    #     input_dir="/data/datatest",
+    #     selection = ml_sel.Selector(ml_sel.LabelTarget(column="Class", values= ["cargo"])),
+    #     batch_size=8,
+    #     num_workers=1
+    # )
 
     dm = ml_db.AudioFolder(
         file_processor=ml_procs.SampleProcessor(
@@ -208,36 +233,19 @@ def _main():
                 overlap=overlap,
                 pipelines=[ml_procs.ToFloatConverter()]
             ),
-        input_dir="/data/datatest",
-        selection = ml_sel.Selector(ml_sel.LabelTarget(column="Class", values= ["cargo"])),
-        batch_size=8,
+        cv=ml_cv.OverfitCV(n_samples=1),
+        # cv=ml_cv.FiveByTwo(),
+        input_dir=args.input_dir,
+        batch_size=1,
         num_workers=1
     )
 
-    # dm = ml_db.Iemanja(
-    #         file_processor=ml_procs.TimeProcessor(
-    #                 fs_out=fs,
-    #                 duration=duration,
-    #                 overlap=overlap,
-    #                 pipelines=[ml_procs.ToFloatConverter()]
-    #             ),
-    #         cv = ml_cv.FiveByTwo(),
-    #         simple_version=True,
-    #         batch_size=16,
-    #         num_workers=1
-    #         )
-
-    model = ml_model.VAE.from_mlp(
-        input_shape=[n_samples],
-        hidden_dims=[512],
-        latent_dim=128,
-        beta=1.0
-    )
+    model = lps_audio_vae.DDSP_VAE()
 
     early_stop_callback = lightning_call.EarlyStopping(
-        monitor="val_loss",
+        monitor="train/loss",
         min_delta=0.1,
-        patience=10,
+        patience=50,
         verbose=True,
         mode="min"
     )
@@ -247,48 +255,115 @@ def _main():
     vae_comp = VAEComparisonCallback(5)
 
     trainer = lightning.Trainer(
-        max_epochs=200,
+        max_epochs=10000,
         accelerator="auto",
         callbacks=[
-            vae_comp,
+            # vae_comp,
             early_stop_callback,
             loss_plot_callback
         ],
         check_val_every_n_epoch=1
     )
 
-    print("Generating reconstructions BEFORE training (random weights)...")
-    dm.setup()
-    val_loader = dm.val_dataloader()
+    # print("Generating reconstructions BEFORE training (random weights)...")
+    # dm.setup()
+    # val_loader = dm.val_dataloader()
 
-    vae_comp.generate_reconstructions(
-        model=model,
-        dataloader=val_loader,
-        n_samples=2,
-        tag="before_training"
-    )
+    # vae_comp.generate_reconstructions(
+    #     model=model,
+    #     dataloader=val_loader,
+    #     n_samples=2,
+    #     tag="before_training"
+    # )
 
-    vae_comp.generate_from_latent_noise(
-        model=model,
-        n_samples=5,
-        epoch_tag="before_training_latent"
-    )
+    # vae_comp.generate_from_latent_noise(
+    #     model=model,
+    #     n_samples=5,
+    #     epoch_tag="before_training_latent"
+    # )
 
     trainer.fit(model, datamodule=dm)
     print("Treino concluído. Gerando reconstruções finais...")
 
-    vae_comp.generate_reconstructions(
-        model=model,
-        dataloader=val_loader,
-        n_samples=5,
-        tag="after_training"
+    # vae_comp.generate_reconstructions(
+    #     model=model,
+    #     dataloader=val_loader,
+    #     n_samples=5,
+    #     tag="after_training"
+    # )
+
+    # vae_comp.generate_from_latent_noise(
+    #     model=model,
+    #     n_samples=10,
+    #     epoch_tag="after_training_latent"
+    # )
+
+    model.eval()
+    traindata = dm.train_dataloader()
+    batch = next(iter(traindata))
+    x, _ = batch
+    x = x[:1].to(model.device)
+
+    with torch.no_grad():
+        y, _, _ = model(x)
+
+    print("####")
+    print("x: ", x.shape)
+    print("y: ", y.shape)
+
+    x_in = x[0].detach().cpu().squeeze()
+    x_out = y[0].detach().cpu().squeeze()
+
+    wav_in = os.path.join(
+        OUTPUT_DIR,
+        "sample_in.wav"
+    )
+    wav_out = os.path.join(
+        OUTPUT_DIR,
+        "sample_out.wav"
+    )
+    psd_filename = os.path.join(
+        OUTPUT_DIR,
+        "sample_psd.png"
+    )
+    demon_filename = os.path.join(
+        OUTPUT_DIR,
+        "sample_demon.png"
+    )
+    lofar_filename = os.path.join(
+        OUTPUT_DIR,
+        "sample_lofar.png"
     )
 
-    vae_comp.generate_from_latent_noise(
-        model=model,
-        n_samples=10,
-        epoch_tag="after_training_latent"
+    VAEComparisonCallback._save_audio(x_in, fs, wav_in)
+    VAEComparisonCallback._save_audio(x_out, fs, wav_out)
+
+    x_in = x_in.numpy()
+    x_out = x_out.numpy()
+
+    lps_bb.plot_psds(
+        filename=psd_filename,
+        noises=[x_in, x_out],
+        labels=["Input", "Reconstructed"],
+        fs=fs,
+        window_size=1024*16,
+        overlap=0.5,
     )
+
+    lps_bb.plot_demon_lines(
+        filename=demon_filename,
+        signals=[x_in, x_out],
+        labels=["Input", "Reconstructed"],
+        fs=fs,
+    )
+
+    lps_analysis.plot_spectral_analysis(
+        filename=lofar_filename,
+        signals=[x_in, x_out],
+        labels=["Input", "Reconstructed"],
+        fs=fs,
+    )
+
 
 
 if __name__ == "__main__":

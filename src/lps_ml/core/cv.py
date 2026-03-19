@@ -18,7 +18,6 @@ class FoldRole(enum.Enum):
     VALIDATION = 1
     TEST = 2
 
-
 class CrossValidator(abc.ABC):
     """Abstract base class for all cross-validation strategies."""
 
@@ -67,7 +66,6 @@ class StratifiedKFold(CrossValidator):
 
         return folds
 
-
 class HoldOutCV(CrossValidator):
     """Three-way Hold-Out validation (train/validation/test)."""
 
@@ -109,7 +107,6 @@ class HoldOutCV(CrossValidator):
 
         return [mapping]
 
-
 class FiveByTwo(CrossValidator):
     """5x2 cross-validation (used in the 5x2 F-test)."""
 
@@ -142,3 +139,26 @@ class FiveByTwo(CrossValidator):
             folds.append(mapping2)
 
         return folds
+
+class OverfitCV(CrossValidator):
+    """
+    Forces the same samples into TRAIN, VALIDATION, and TEST.
+    Ideal for debugging convergence.
+    """
+
+    def __init__(self, n_samples: int = 1):
+        self.n_samples = n_samples
+
+    def apply(self, ids, targets, random_state=42):
+
+        rng = np.random.RandomState(random_state)
+        idx = rng.choice(len(ids), size=self.n_samples, replace=False)
+
+        selected_ids = [ids[i] for i in idx]
+
+        mapping = {}
+
+        for sid in selected_ids:
+            mapping[sid] = FoldRole.TRAIN  # todos iguais
+
+        return [mapping]
