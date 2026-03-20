@@ -255,7 +255,7 @@ def _main():
     vae_comp = VAEComparisonCallback(5)
 
     trainer = lightning.Trainer(
-        max_epochs=10000,
+        max_epochs=1000,
         accelerator="auto",
         callbacks=[
             # vae_comp,
@@ -305,46 +305,39 @@ def _main():
     x = x[:1].to(model.device)
 
     with torch.no_grad():
-        y, _, _ = model(x)
-
-    print("####")
-    print("x: ", x.shape)
-    print("y: ", y.shape)
+        y, _, _, bb, bb_mod = model.int_forward(x)
 
     x_in = x[0].detach().cpu().squeeze()
     x_out = y[0].detach().cpu().squeeze()
+    bb = bb[0].detach().cpu().squeeze()
+    bb_mod = bb_mod[0].detach().cpu().squeeze()
 
-    wav_in = os.path.join(
-        OUTPUT_DIR,
-        "sample_in.wav"
-    )
-    wav_out = os.path.join(
-        OUTPUT_DIR,
-        "sample_out.wav"
-    )
-    psd_filename = os.path.join(
-        OUTPUT_DIR,
-        "sample_psd.png"
-    )
-    demon_filename = os.path.join(
-        OUTPUT_DIR,
-        "sample_demon.png"
-    )
-    lofar_filename = os.path.join(
-        OUTPUT_DIR,
-        "sample_lofar.png"
-    )
+    wav_in = os.path.join(OUTPUT_DIR, "in.wav")
+    wav_out = os.path.join(OUTPUT_DIR, "out.wav")
+    wav_bb = os.path.join(OUTPUT_DIR, "bb.wav")
+    wav_bb_mod = os.path.join(OUTPUT_DIR, "bb_mod.wav")
+    psd_filename = os.path.join(OUTPUT_DIR, "psd.png")
+    demon_filename = os.path.join(OUTPUT_DIR, "demon.png")
+    lofar_filename = os.path.join(OUTPUT_DIR, "lofar.png")
+    time_filename = os.path.join(OUTPUT_DIR, "time.png")
 
     VAEComparisonCallback._save_audio(x_in, fs, wav_in)
     VAEComparisonCallback._save_audio(x_out, fs, wav_out)
+    VAEComparisonCallback._save_audio(bb, fs, wav_bb)
+    VAEComparisonCallback._save_audio(bb_mod, fs, wav_bb_mod)
 
     x_in = x_in.numpy()
     x_out = x_out.numpy()
+    bb = bb.numpy()
+    bb_mod = bb_mod.numpy()
+
+    noises=[x_in, x_out, bb, bb_mod]
+    labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation"]
 
     lps_bb.plot_psds(
         filename=psd_filename,
-        noises=[x_in, x_out],
-        labels=["Input", "Reconstructed"],
+        noises=noises,
+        labels=labels,
         fs=fs,
         window_size=1024*16,
         overlap=0.5,
@@ -352,16 +345,24 @@ def _main():
 
     lps_bb.plot_demon_lines(
         filename=demon_filename,
-        signals=[x_in, x_out],
-        labels=["Input", "Reconstructed"],
+        signals=noises,
+        labels=labels,
         fs=fs,
     )
 
     lps_analysis.plot_spectral_analysis(
         filename=lofar_filename,
-        signals=[x_in, x_out],
-        labels=["Input", "Reconstructed"],
+        signals=noises,
+        labels=labels,
         fs=fs,
+    )
+
+    lps_analysis.plot_in_time(
+        filename=time_filename,
+        signals=noises,
+        labels=labels,
+        fs=fs,
+        zoom_samples=1024*64
     )
 
 

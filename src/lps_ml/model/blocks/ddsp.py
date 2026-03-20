@@ -201,7 +201,7 @@ class Broadband(torch.nn.Module):
 
         return noise
 
-class HarmonicHead(ml_stack1d.ConvEncoder):
+class BroadbandHarmonicModulatorHead(ml_stack1d.ConvEncoder):
     """
     ConvEncoder specialized for harmonic parameter estimation.
 
@@ -227,7 +227,7 @@ class HarmonicHead(ml_stack1d.ConvEncoder):
         super().__init__(
             in_channels=in_channels,
             channels=channels,
-            project_dim=n_harmonics + 1,
+            project_dim=n_harmonics + 2,
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation,
@@ -242,11 +242,12 @@ class HarmonicHead(ml_stack1d.ConvEncoder):
         params = super().forward(x)
 
         f0 = params[:, :1]
-        amps = params[:, 1:]
+        mod_index = params[:, 1:2]
+        amps = params[:, 2:]
 
-        return f0, amps
+        return f0, mod_index, amps
 
-class Harmonic(torch.nn.Module):
+class BroadbandHarmonicModulator(torch.nn.Module):
     """
     DDSP-style harmonic synthesizer.
 
@@ -257,7 +258,7 @@ class Harmonic(torch.nn.Module):
 
     def __init__(
         self,
-        head: HarmonicHead,
+        head: BroadbandHarmonicModulatorHead,
         sample_rate: lps_qty.Frequency,
         samples_per_frame: int,
         f0_min: lps_qty.Frequency = lps_qty.Frequency.hz(10.0),
@@ -285,7 +286,7 @@ class Harmonic(torch.nn.Module):
 
         print(f"[Harmonic] input: {x.shape}")
 
-        f0, amps = self.head(x)
+        f0, mod_index, amps = self.head(x)
 
         print(f"\t[Harmonic] f0: {f0.shape}")
         print(f"\t[Harmonic] amps: {amps.shape}")
@@ -294,11 +295,33 @@ class Harmonic(torch.nn.Module):
         print(f"\t[Harmonic] f0: {f0.shape} -> {f0.min().item()*60:.1f} rpm to {f0.max().item()*60:.1f} rpm")
 
         amps = torch.relu(amps)
+        mod_index = torch.sigmoid(mod_index)
         print(f"\t[Harmonic] relu: {amps.shape}")
 
+        a0 = torch.sum(amps, dim=1, keepdim=True)/ (mod_index + 1e-6)
+        total_energy = a0**2 + torch.sum(amps**2, dim=1, keepdim=True)/ 2
+
+        a0 = a0 / (torch.sqrt(total_energy) + 1e-6)
+        amps = amps / (torch.sqrt(total_energy) + 1e-6)
+
+        print(f"\t[Harmonic] f0: {f0}")
+        print(f"\t[Harmonic] a0: {a0}")
+        print(f"\t[Harmonic] amps: {amps}")
+
+        n_samples = self.samples_per_frame * f0.shape[-1]
+
+        # f0 = torch.nn.functional.interpolate(f0,
+        #             size=n_samples, mode='linear', align_corners=True)
+        # a0 = torch.nn.functional.interpolate(a0,
+        #             size=n_samples, mode='linear', align_corners=True)
+        # amps = torch.nn.functional.interpolate(amps,
+        #             size=n_samples, mode='linear', align_corners=True)
+
         f0 = f0.repeat_interleave(self.samples_per_frame, dim=2)
+        a0 = a0.repeat_interleave(self.samples_per_frame, dim=2)
         amps = amps.repeat_interleave(self.samples_per_frame, dim=2)
         print(f"\t[Harmonic] repeat f0: {f0.shape}")
+        print(f"\t[Harmonic] repeat a0: {a0.shape}")
         print(f"\t[Harmonic] repeat amps: {amps.shape}")
 
         omega = 2 * torch.pi * f0 / self.sample_rate
@@ -314,15 +337,15 @@ class Harmonic(torch.nn.Module):
 
         harmonic_freqs = k * f0
         print(f"\t[Harmonic] k: {harmonic_freqs.shape}")
-        mask = (harmonic_freqs <= self.f0_max).float()
+        mask = (harmonic_freqs <= self.sample_rate).float()
 
-        signal = torch.sum(
+        harm = torch.sum(
             amps * mask * torch.sin(k * phase),
             dim=1,
             keepdim=True
         )
-        print(f"\t[Harmonic] signal: {signal.shape}")
+        print(f"\t[Harmonic] signal: {harm.shape}")
+
+        signal = a0 + harm
 
         return signal
-
-

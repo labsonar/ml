@@ -99,7 +99,7 @@ class DDSP_VAE(lightning.LightningModule):
         kernel=3,
         ratios=[4, 4, 4, 2],
 
-        noise_ratios=[4, 4, 2],
+        noise_ratios=[8, 8, 4, 4],
         noise_bands=5,
         n_noise_channels=1,
 
@@ -145,14 +145,15 @@ class DDSP_VAE(lightning.LightningModule):
             n_noise_channels=n_noise_channels,
         )
 
-        harmonic_head = ml_ddsp.HarmonicHead(
+        noise_ratios=[8, 8, 4, 4, 4]
+        harmonic_head = ml_ddsp.BroadbandHarmonicModulatorHead(
             in_channels=dec_channels[-1],
             channels=[dec_channels[-1] for i in range(len(noise_ratios))],
             n_harmonics=n_harmonics,
             stride=noise_ratios,
         )
 
-        self.harmonic = ml_ddsp.Harmonic(
+        self.harmonic = ml_ddsp.BroadbandHarmonicModulator(
             head=harmonic_head,
             sample_rate=sample_rate,
             samples_per_frame=n_bands,
@@ -173,6 +174,10 @@ class DDSP_VAE(lightning.LightningModule):
         return -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
 
     def forward(self, x):
+        y, _, _, _, _ = self.int_forward(x)
+        return y
+
+    def int_forward(self, x):
         """
         x: (B, 1, T)
         """
@@ -199,10 +204,10 @@ class DDSP_VAE(lightning.LightningModule):
         ship_bb_modulation = self.harmonic(features)
         print("ship_bb_modulation: ", ship_bb_modulation.shape)
 
-        # y = noise * harmonic
-        y = ship_bb_noise
+        y = ship_bb_noise * ship_bb_modulation
+        # y = ship_bb_noise
 
-        return y, mean, logvar
+        return y, mean, logvar, ship_bb_noise, ship_bb_modulation
 
     def shared_step(self, batch, stage: str):
         """
@@ -214,7 +219,7 @@ class DDSP_VAE(lightning.LightningModule):
         """
         x, _ = batch
 
-        y, mean, logvar = self(x)
+        y, mean, logvar, _, _ = self.int_forward(x)
 
         recon = self.stft_loss(x, y)
         kl = DDSP_VAE._kl_loss(mean, logvar)
