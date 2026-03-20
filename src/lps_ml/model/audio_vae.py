@@ -1,5 +1,6 @@
 import typing
 import torch
+import torchaudio
 import lightning
 
 import lps_utils.quantities as lps_qty
@@ -81,11 +82,228 @@ class MultiSTFTLoss(torch.nn.Module):
             sc = torch.norm(mag_X - mag_Y) / (torch.norm(mag_X) + 1e-7)
             loss += sc
 
-            # # log magnitude
-            # log_mag = torch.mean(torch.abs(torch.log(mag_X + 1e-7) - torch.log(mag_Y + 1e-7)))
-            # loss += sc + log_mag
+            # log magnitude
+            log_mag = torch.mean(torch.abs(torch.log(mag_X + 1e-7) - torch.log(mag_Y + 1e-7)))
+            loss += log_mag
 
         return loss
+
+class MultiMelLoss(torch.nn.Module):
+
+    def __init__(
+        self,
+        sample_rate: int,
+        n_ffts=[1024, 2048, 512],
+        hop_sizes=[256, 512, 128],
+        n_mels=80,
+        f_min=0.0,
+        f_max=None,
+    ):
+        super().__init__()
+
+        self.transforms = torch.nn.ModuleList()
+
+        for n_fft, hop in zip(n_ffts, hop_sizes):
+            mel = torchaudio.transforms.MelSpectrogram(
+                sample_rate=sample_rate,
+                n_fft=n_fft,
+                hop_length=hop,
+                win_length=n_fft,
+                n_mels=n_mels,
+                f_min=f_min,
+                f_max=f_max,
+                power=1.0,  # magnitude (não potência)
+                normalized=False,
+            )
+            self.transforms.append(mel)
+
+    def forward(self, x, y):
+        loss = 0.0
+
+        for mel in self.transforms:
+            X = mel(x.squeeze(1))  # (B, n_mels, T)
+            Y = mel(y.squeeze(1))
+
+            # spectral convergence
+            sc = torch.norm(X - Y) / (torch.norm(X) + 1e-7)
+            loss += sc
+
+            # log-mel loss (recomendado)
+            log_X = torch.log(X + 1e-7)
+            log_Y = torch.log(Y + 1e-7)
+            log_mag = torch.mean(torch.abs(log_X - log_Y))
+
+            loss += log_mag
+
+        return loss
+
+class Decimate(torch.nn.Module):
+    def __init__(self, factor, kernel_size=63):
+        super().__init__()
+        self.factor = factor
+
+        # cria um low-pass sinc windowed
+        t = torch.arange(kernel_size) - (kernel_size - 1) / 2
+        sinc = torch.sinc(t / factor)
+
+        window = torch.hann_window(kernel_size)
+        kernel = sinc * window
+        kernel = kernel / kernel.sum()
+
+        self.register_buffer("kernel", kernel.view(1, 1, -1))
+
+    def forward(self, x):
+        x = torch.nn.functional.conv1d(
+            x,
+            self.kernel,
+            stride=self.factor,
+            padding=self.kernel.shape[-1] // 2
+        )
+        return x
+
+class DemonLoss(torch.nn.Module):
+
+    def __init__(
+        self,
+        sample_rate: float,
+        n_fft: int = 512,
+        hop_length: int = 256,
+        decimate: typing.List[int] = [16, 8],
+        eps: float = 1e-7,
+    ):
+        super().__init__()
+
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+        self.decimate = decimate
+        self.eps = eps
+
+        self.decimators = []
+        for ratio in self.decimate:
+            self.decimators.append(Decimate(ratio))
+
+    def envelope(self, x):
+        # return torch.sqrt(torch.nn.functional.avg_pool1d(x**2, kernel_size=32, stride=1, padding=16))
+        return torch.abs(x)
+
+    def decimate_signal(self, x: torch.Tensor):
+        if self.decimate == 1:
+            return x
+
+        for decimator in self.decimators:
+            x = decimator(x)
+        # for ratio in self.decimate:
+        #     x = torchaudio.functional.resample(x, orig_freq=self.sample_rate, new_freq=self.sample_rate//ratio)
+        return x
+
+    def soft_tpsw(self, x, kernel_size=13, hole_size=3):
+        # x: (B, F, T)
+        B, F, T = x.shape
+        device = x.device
+
+        # cria kernel
+        kernel = torch.ones(kernel_size, device=device)
+
+        center = kernel_size // 2
+        half_hole = hole_size // 2
+        kernel[center - half_hole : center + half_hole + 1] = 0.0
+
+        kernel = kernel / kernel.sum()
+        kernel = kernel.view(1, 1, -1)
+
+        # reshape para conv1d
+        x_reshaped = x.reshape(B * F, 1, T)
+
+        background = torch.nn.functional.conv1d(
+            x_reshaped,
+            kernel,
+            padding=kernel_size // 2
+        )
+
+        # volta ao shape original
+        background = background.reshape(B, F, T)
+
+        return torch.relu(x - background)
+
+    def demon_spectrogram(self, x: torch.Tensor):
+        # x: (B, 1, T)
+
+        print("decimated x: ", x.shape)
+
+        x = self.envelope(x)
+        x = self.decimate_signal(x)
+
+        print("decimated x: ", x.shape)
+
+        X = torch.stft(
+            x.squeeze(1),
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.n_fft,
+            return_complex=True
+        )
+
+        X = torch.abs(X)
+
+        return self.soft_tpsw(X)
+
+    def forward(self, x, y):
+        X = self.demon_spectrogram(x)
+        Y = self.demon_spectrogram(y)
+
+        # spectral convergence
+        sc = torch.norm(X - Y) / (torch.norm(X) + self.eps)
+
+        # log magnitude
+        log_X = torch.log(X + self.eps)
+        log_Y = torch.log(Y + self.eps)
+        log_mag = torch.mean(torch.abs(log_X - log_Y))
+
+        return sc + log_mag
+
+class MultiDemonLoss(torch.nn.Module):
+
+    def __init__(
+        self,
+        sample_rate,
+        configs=[
+            (512, 128, 5),
+            (1024, 256, 10),
+            (2048, 512, 20),
+        ],
+    ):
+        super().__init__()
+
+        self.losses = torch.nn.ModuleList([
+            DemonLoss(sample_rate, n_fft, hop, dec)
+            for (n_fft, hop, dec) in configs
+        ])
+
+    def forward(self, x, y):
+        loss = 0.0
+        for l in self.losses:
+            loss += l(x, y)
+        return loss
+
+class Loss(torch.nn.Module):
+    def __init__(self,
+                 sample_rate: lps_qty.Frequency,
+                 stft_factor = 0.5,
+                 mel_factor = 0.5):
+        super().__init__()
+        self.stft_factor = stft_factor
+        self.mel_factor = mel_factor
+        self.stft_loss = MultiSTFTLoss()
+        self.mel_loss = MultiMelLoss(sample_rate=int(sample_rate.get_hz()))
+
+
+    def forward(self, x, y):
+        loss = 0
+        loss += self.stft_factor * self.stft_loss(x, y)
+        loss += self.mel_factor * self.mel_loss(x, y)
+        return loss
+
 
 class DDSP_VAE(lightning.LightningModule):
 
@@ -100,13 +318,13 @@ class DDSP_VAE(lightning.LightningModule):
         ratios=[4, 4, 4, 2],
 
         noise_ratios=[8, 8, 4, 4],
-        noise_bands=5,
+        noise_bands=8,
         n_noise_channels=1,
 
-        n_harmonics=12,
+        n_harmonics=8,
         sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16),
 
-        beta_kl=1e-4,
+        beta_kl=1e-1,
         lr=1e-4,
     ):
         super().__init__()
@@ -145,12 +363,12 @@ class DDSP_VAE(lightning.LightningModule):
             n_noise_channels=n_noise_channels,
         )
 
-        noise_ratios=[8, 8, 4, 4, 4]
+        bb_mod_ratios=[8, 8, 4, 4, 4]
         harmonic_head = ml_ddsp.BroadbandHarmonicModulatorHead(
             in_channels=dec_channels[-1],
-            channels=[dec_channels[-1] for i in range(len(noise_ratios))],
+            channels=[dec_channels[-1] for i in range(len(bb_mod_ratios))],
             n_harmonics=n_harmonics,
-            stride=noise_ratios,
+            stride=bb_mod_ratios,
         )
 
         self.bb_mod = ml_ddsp.BroadbandHarmonicModulator(
@@ -161,12 +379,12 @@ class DDSP_VAE(lightning.LightningModule):
             f0_max=lps_qty.Frequency.rpm(200),
         )
 
-        noise_ratios=[4, 4, 4]
+        nb_ratios=[4, 4, 4]
         nb_head = ml_ddsp.NarrowbandHead(
             in_channels=dec_channels[-1],
-            channels=[dec_channels[-1] for i in range(len(noise_ratios))],
+            channels=[dec_channels[-1] for i in range(len(nb_ratios))],
             n_freqs=16,
-            stride=noise_ratios,
+            stride=nb_ratios,
         )
 
         self.nb = ml_ddsp.Narrowband(
@@ -175,7 +393,21 @@ class DDSP_VAE(lightning.LightningModule):
             samples_per_frame=n_bands,
         )
 
-        self.stft_loss = MultiSTFTLoss()
+        self.ch_ir = ml_ddsp.DifferentiableIR(
+            duration = lps_qty.Time.s(1),
+            sample_rate=sample_rate,
+        )
+
+        self.env = ml_ddsp.Broadband(
+            in_channels=dec_channels[-1],
+            hidden_size=dec_channels[-1],
+            out_channels=n_bands,
+            ratios=noise_ratios,
+            noise_bands=noise_bands,
+            n_noise_channels=n_noise_channels,
+        )
+
+        self.loss = Loss(sample_rate=sample_rate)
 
     @staticmethod
     def _reparameterize(mean, logvar):
@@ -188,7 +420,7 @@ class DDSP_VAE(lightning.LightningModule):
         return -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
 
     def forward(self, x):
-        y, _, _, _, _, _ = self.detailed_forward(x)
+        y, _, _, _, _, _, _, _, _, _ = self.detailed_forward(x)
         return y
 
     def detailed_forward(self, x):
@@ -221,9 +453,25 @@ class DDSP_VAE(lightning.LightningModule):
         ship_nb_noise = self.nb(features)
         print("ship_nb_noise: ", ship_nb_noise.shape)
 
-        y = ship_bb_noise * ship_bb_modulation + ship_nb_noise
+        ship = ship_bb_noise * ship_bb_modulation + ship_nb_noise
 
-        return y, mean, logvar, ship_bb_noise, ship_bb_modulation, ship_nb_noise
+        signal = self.ch_ir(ship)
+        print("signal: ", signal.shape)
+
+        ir = self.ch_ir.build_impulse()
+        print("ir: ", ir.shape)
+
+        env_noise = self.env(features)
+        print("env_noise: ", env_noise.shape)
+        env_noise = self.pqmf.reverse(env_noise)
+        print("env_noise pqmf: ", env_noise.shape)
+
+
+        # y = signal + env_noise
+        y = ship
+        print("y: ", y.shape)
+
+        return y, mean, logvar, ship_bb_noise, ship_bb_modulation, ship_nb_noise, ship, ir, env_noise, signal
 
     def shared_step(self, batch, stage: str):
         """
@@ -235,9 +483,9 @@ class DDSP_VAE(lightning.LightningModule):
         """
         x, _ = batch
 
-        y, mean, logvar, _, _, _ = self.detailed_forward(x)
+        y, mean, logvar, _, _, _, _, _, _, _ = self.detailed_forward(x)
 
-        recon = self.stft_loss(x, y)
+        recon = self.loss(x, y)
         kl = DDSP_VAE._kl_loss(mean, logvar)
 
         loss = recon + self.hparams.beta_kl * kl
@@ -250,7 +498,6 @@ class DDSP_VAE(lightning.LightningModule):
 
     def training_step(self, batch, batch_idx):
         return self.shared_step(batch, "train")
-
 
     def validation_step(self, batch, batch_idx):
         self.shared_step(batch, "val")

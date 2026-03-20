@@ -433,3 +433,225 @@ class Narrowband(torch.nn.Module):
         print(f"\t[Narrowband] signal: {signal.shape}")
 
         return signal
+
+class Reverb(torch.nn.Module):
+    def __init__(self,
+                 duration: lps_qty.Time,
+                 sample_rate: lps_qty.Frequency,
+                 initial_wet=0,
+                 initial_decay=5):
+        super().__init__()
+        self.n_samples = int(sample_rate * duration)
+        self.sample_rate = sample_rate.get_hz()
+
+        self.noise = torch.nn.Parameter((torch.rand(self.n_samples) * 2 - 1).unsqueeze(-1))
+        self.decay = torch.nn.Parameter(torch.tensor(float(initial_decay)))
+        self.wet = torch.nn.Parameter(torch.tensor(float(initial_wet)))
+
+        t = torch.arange(self.n_samples) / self.sample_rate
+        t = t.reshape(1, -1, 1)
+        self.register_buffer("t", t)
+
+    def build_impulse(self):
+        print("[Reverb] self.t: ", self.t.shape)
+        t = torch.exp(-torch.nn.functional.softplus(-self.decay * 100) * self.t)
+        print("[Reverb] t: ", t.shape)
+        print("[Reverb] noise: ", self.noise.shape)
+        noise = self.noise * t
+        print("[Reverb] noise: ", noise.shape)
+        impulse = noise * torch.sigmoid(self.wet)
+        print("[Reverb] self.wet: ", self.wet.shape)
+        print("[Reverb] impulse: ", impulse.shape)
+        impulse = impulse.permute(0, 2, 1)
+        impulse[:, :, 0] = 1
+        return impulse
+
+    def forward(self, x):
+        print("[Reverb] x: ", x.shape)
+        lenx = x.shape[-1]
+        impulse = self.build_impulse()
+        print("[Reverb] build_impulse: ", impulse.shape)
+
+        # impulse = torch.nn.functional.pad(impulse, (0, 0, lenx - self.n_samples))
+        impulse = torch.nn.functional.pad(impulse, (0, lenx - self.n_samples))
+        print("[Reverb] impulse pad: ", impulse.shape)
+        print("[Reverb] x: ", x.shape)
+        print("[Reverb] samples: ", self.n_samples)
+
+        x = Broadband.fft_convolve(x.squeeze(-1), impulse.squeeze(-1))
+
+        print("[Reverb] output: ", x.shape)
+        return x
+
+class DifferentiableIR(torch.nn.Module):
+
+    def __init__(
+        self,
+        duration: lps_qty.Time,
+        sample_rate: lps_qty.Frequency,
+        n_taps: int = 16,
+        init_max_delay: float = None,
+        kernel_sigma: float = 1.0,
+        use_decay: bool = True,
+        decay_rate: float = 0.0005,
+    ):
+        super().__init__()
+
+        self.n_taps = n_taps
+        self.n_samples = int(sample_rate * duration)
+        self.kernel_sigma = kernel_sigma
+        self.use_decay = use_decay
+        self.decay_rate = decay_rate
+
+        if init_max_delay is None:
+            init_max_delay = self.n_samples
+
+        self.raw_delays = torch.nn.Parameter(torch.randn(n_taps))
+        self.gains = torch.nn.Parameter(torch.randn(n_taps) * 0.1)
+
+        t = torch.arange(self.n_samples).float()
+        self.register_buffer("t", t)
+
+        self.max_delay = float(init_max_delay)
+
+    def get_delays(self):
+        delays = torch.sigmoid(self.raw_delays) * self.max_delay
+        return delays
+
+    def build_impulse(self):
+
+        t = self.t[None, :]                 # (1, T)
+        delays = self.get_delays()[:, None] # (K, 1)
+
+        dt = t - delays
+
+        kernel = torch.sinc(dt)
+        kernel_size = 64
+
+        half = kernel_size / 2
+        mask = (dt.abs() <= half).float()
+        window = 0.5 * (1 + torch.cos(torch.pi * dt / half)) * mask
+        kernel = kernel * window
+
+        # kernel = torch.exp(
+        #     -0.5 * ((t - delays) / self.kernel_sigma) ** 2
+        # )  # (K, T)
+
+        gains = self.gains
+
+        if self.use_decay:
+            gains = gains * torch.exp(-self.decay_rate * delays.squeeze())
+
+        h = (gains[:, None] * kernel).sum(dim=0)  # (T,)
+
+        return h.view(1, 1, -1)
+
+    def forward(self, x):
+        """
+        x: (B, 1, T)
+        """
+        print("[Reverb] x: ", x.shape)
+        lenx = x.shape[-1]
+        impulse = self.build_impulse()
+        print("[Reverb] build_impulse: ", impulse.shape)
+
+        # impulse = torch.nn.functional.pad(impulse, (0, 0, lenx - self.n_samples))
+        impulse = torch.nn.functional.pad(impulse, (0, lenx - self.n_samples))
+        print("[Reverb] impulse pad: ", impulse.shape)
+        print("[Reverb] x: ", x.shape)
+        print("[Reverb] samples: ", self.n_samples)
+
+        x = Broadband.fft_convolve(x.squeeze(-1), impulse.squeeze(-1))
+
+        print("[Reverb] output: ", x.shape)
+        return x
+
+class UnderwaterReverb(torch.nn.Module):
+    def __init__(
+        self,
+        length: int,
+        sampling_rate: float,
+        n_paths: int = 16,
+        initial_wet: float = 0.0,
+        initial_decay: float = 3.0,
+    ):
+        super().__init__()
+
+        self.length = length
+        self.sampling_rate = sampling_rate
+        self.n_taps = n_paths
+
+        # 🔹 ruído base
+        self.noise = torch.nn.Parameter(
+            (torch.rand(length) * 2 - 1).unsqueeze(0)  # (1, T)
+        )
+
+        # 🔹 parâmetros físicos
+        self.decay = torch.nn.Parameter(torch.tensor(initial_decay))
+        self.wet = torch.nn.Parameter(torch.tensor(initial_wet))
+
+        # 🔹 multipath
+        self.delays = torch.nn.Parameter(
+            torch.linspace(0.0, 0.05, n_paths)  # até 50 ms
+        )
+        self.gains = torch.nn.Parameter(
+            torch.ones(n_paths) * 0.5
+        )
+
+        # tempo
+        t = torch.arange(length) / sampling_rate
+        self.register_buffer("t", t.view(1, -1))  # (1, T)
+
+    def build_impulse(self):
+
+        # 🔹 envelope exponencial (absorção)
+        decay = torch.exp(
+            -torch.nn.functional.softplus(self.decay) * self.t * 100
+        )  # fator ajustável
+
+        base = self.noise * decay  # (1, T)
+
+        # 🔹 multipath
+        impulse = torch.zeros_like(base)
+
+        for i in range(self.n_taps):
+
+            delay_samples = (self.delays[i] * self.sampling_rate).long()
+
+            shifted = torch.roll(base, int(delay_samples.item()), dims=-1)
+
+            gain = torch.tanh(self.gains[i])  # estabilidade
+
+            impulse = impulse + gain * shifted
+
+        # 🔹 direct path (sempre presente)
+        impulse[:, 0] = 1.0
+
+        # 🔹 wet control
+        impulse = impulse * torch.sigmoid(self.wet)
+
+        return impulse
+
+    def forward(self, x: torch.Tensor):
+        """
+        x: (B, T) ou (B, 1, T)
+        """
+
+        if x.dim() == 3:
+            x = x.squeeze(1)
+
+        B, T = x.shape
+
+        impulse = self.build_impulse()  # (1, L)
+
+        # pad IR para tamanho do sinal
+        impulse = torch.nn.functional.pad(
+            impulse,
+            (0, T - self.length)
+        )
+
+        impulse = impulse.repeat(B, 1)
+
+        out = Broadband.fft_convolve(x, impulse)
+
+        return out.unsqueeze(1)

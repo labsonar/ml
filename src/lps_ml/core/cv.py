@@ -162,3 +162,67 @@ class OverfitCV(CrossValidator):
             mapping[sid] = FoldRole.TRAIN  # todos iguais
 
         return [mapping]
+
+class SimpleSplitCV(CrossValidator):
+    """
+    Single split into TRAIN / VALIDATION / TEST using explicit percentages.
+    """
+
+    def __init__(
+        self,
+        train_size: float = 0.7,
+        val_size: float = 0.2,
+        test_size: float = 0.1,
+        stratify: bool = True,
+    ):
+        total = train_size + val_size + test_size
+
+        if not np.isclose(total, 1.0):
+            raise ValueError(
+                f"train + val + test must sum to 1. Got {total:.3f}"
+            )
+
+        self.train_size = train_size
+        self.val_size = val_size
+        self.test_size = test_size
+        self.stratify = stratify
+
+    def apply(
+        self,
+        ids: typing.List[int],
+        targets: typing.List[int],
+        random_state: int = 42,
+    ) -> typing.List[typing.Dict[int, FoldRole]]:
+
+        ids = np.array(ids)
+        targets = np.array(targets)
+
+        indices = np.arange(len(ids))
+
+        stratify_targets = targets if self.stratify else None
+
+        # Primeiro: separa TRAIN vs (VAL+TEST)
+        train_idx, temp_idx = sk_selection.train_test_split(
+            indices,
+            test_size=(1.0 - self.train_size),
+            stratify=stratify_targets,
+            random_state=random_state,
+        )
+
+        # Ajusta proporção relativa entre VAL e TEST dentro do restante
+        val_ratio_relative = self.val_size / (self.val_size + self.test_size)
+
+        stratify_temp = targets[temp_idx] if self.stratify else None
+
+        val_idx, test_idx = sk_selection.train_test_split(
+            temp_idx,
+            test_size=(1.0 - val_ratio_relative),
+            stratify=stratify_temp,
+            random_state=random_state,
+        )
+
+        mapping = {ids[i]: FoldRole.TRAIN for i in train_idx}
+        mapping.update({ids[i]: FoldRole.VALIDATION for i in val_idx})
+        mapping.update({ids[i]: FoldRole.TEST for i in test_idx})
+
+        return [mapping]

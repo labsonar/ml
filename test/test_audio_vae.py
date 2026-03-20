@@ -233,18 +233,18 @@ def _main():
                 overlap=overlap,
                 pipelines=[ml_procs.ToFloatConverter()]
             ),
-        cv=ml_cv.OverfitCV(n_samples=1),
-        # cv=ml_cv.FiveByTwo(),
+        # cv=ml_cv.OverfitCV(n_samples=1),
+        cv=ml_cv.FiveByTwo(),
         input_dir=args.input_dir,
-        batch_size=1,
+        batch_size=16,
         num_workers=1
     )
 
     model = lps_audio_vae.DDSP_VAE()
 
     early_stop_callback = lightning_call.EarlyStopping(
-        monitor="train/loss",
-        min_delta=0.1,
+        monitor="val/loss",
+        min_delta=0.001,
         patience=50,
         verbose=True,
         mode="min"
@@ -254,15 +254,25 @@ def _main():
 
     vae_comp = VAEComparisonCallback(5)
 
+    checkpoint_callback = lightning_call.ModelCheckpoint(
+        dirpath=OUTPUT_DIR,
+        filename="audio_vae-{epoch:04d}-{val_loss:.4f}",
+        monitor="val/loss",
+        save_top_k=1,      # salva o melhor modelo
+        mode="min",
+        save_last=True     # salva também o último
+    )
+
     trainer = lightning.Trainer(
-        max_epochs=1000,
+        max_epochs=10000,
         accelerator="auto",
         callbacks=[
             # vae_comp,
+            checkpoint_callback,
             early_stop_callback,
             loss_plot_callback
         ],
-        check_val_every_n_epoch=1
+        check_val_every_n_epoch=3
     )
 
     # print("Generating reconstructions BEFORE training (random weights)...")
@@ -305,19 +315,27 @@ def _main():
     x = x[:1].to(model.device)
 
     with torch.no_grad():
-        y, _, _, bb, bb_mod, nb = model.detailed_forward(x)
+        y, _, _, bb, bb_mod, nb, ship, ir, env_noise, signal = model.detailed_forward(x)
 
     x_in = x[0].detach().cpu().squeeze()
     x_out = y[0].detach().cpu().squeeze()
     bb = bb[0].detach().cpu().squeeze()
     bb_mod = bb_mod[0].detach().cpu().squeeze()
     nb = nb[0].detach().cpu().squeeze()
+    ship = ship[0].detach().cpu().squeeze()
+    ir = ir[0].detach().cpu().squeeze()
+    signal = signal[0].detach().cpu().squeeze()
+    env_noise = env_noise[0].detach().cpu().squeeze()
 
     wav_in = os.path.join(OUTPUT_DIR, "in.wav")
     wav_out = os.path.join(OUTPUT_DIR, "out.wav")
     wav_bb = os.path.join(OUTPUT_DIR, "bb.wav")
     wav_bb_mod = os.path.join(OUTPUT_DIR, "bb_mod.wav")
     wav_nb = os.path.join(OUTPUT_DIR, "nb.wav")
+    wav_ship = os.path.join(OUTPUT_DIR, "ship.wav")
+    # wav_ir = os.path.join(OUTPUT_DIR, "ir.wav")
+    # wav_signal = os.path.join(OUTPUT_DIR, "signal.wav")
+    # wav_env_noise = os.path.join(OUTPUT_DIR, "env_noise.wav")
     psd_filename = os.path.join(OUTPUT_DIR, "psd.png")
     demon_filename = os.path.join(OUTPUT_DIR, "demon.png")
     lofar_filename = os.path.join(OUTPUT_DIR, "lofar.png")
@@ -328,15 +346,26 @@ def _main():
     VAEComparisonCallback._save_audio(bb, fs, wav_bb)
     VAEComparisonCallback._save_audio(bb_mod, fs, wav_bb_mod)
     VAEComparisonCallback._save_audio(nb, fs, wav_nb)
+    VAEComparisonCallback._save_audio(ship, fs, wav_ship)
+    # VAEComparisonCallback._save_audio(ir, fs, wav_ir)
+    # VAEComparisonCallback._save_audio(signal, fs, wav_signal)
+    # VAEComparisonCallback._save_audio(env_noise, fs, wav_env_noise)
 
     x_in = x_in.numpy()
     x_out = x_out.numpy()
     bb = bb.numpy()
     bb_mod = bb_mod.numpy()
     nb = nb.numpy()
+    ship = ship.numpy()
+    # ir = ir.numpy()
+    # signal = signal.numpy()
+    # env_noise = env_noise.numpy()
 
-    noises=[x_in, x_out, bb, bb_mod, nb]
-    labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation", "Narrowband Noise"]
+    # noises=[x_in, x_out, bb, bb_mod, nb, ship, ir, env_noise, signal]
+    # labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation", "Narrowband Noise", "Ship", "Impulse Response", "Environmental Noise", "Signal"]
+
+    noises=[x_in, x_out, bb, bb_mod, nb, ship]
+    labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation", "Narrowband Noise", "Ship"]
 
     lps_bb.plot_psds(
         filename=psd_filename,
