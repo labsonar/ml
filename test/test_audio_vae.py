@@ -305,17 +305,19 @@ def _main():
     x = x[:1].to(model.device)
 
     with torch.no_grad():
-        y, _, _, bb, bb_mod = model.int_forward(x)
+        y, _, _, bb, bb_mod, nb = model.detailed_forward(x)
 
     x_in = x[0].detach().cpu().squeeze()
     x_out = y[0].detach().cpu().squeeze()
     bb = bb[0].detach().cpu().squeeze()
     bb_mod = bb_mod[0].detach().cpu().squeeze()
+    nb = nb[0].detach().cpu().squeeze()
 
     wav_in = os.path.join(OUTPUT_DIR, "in.wav")
     wav_out = os.path.join(OUTPUT_DIR, "out.wav")
     wav_bb = os.path.join(OUTPUT_DIR, "bb.wav")
     wav_bb_mod = os.path.join(OUTPUT_DIR, "bb_mod.wav")
+    wav_nb = os.path.join(OUTPUT_DIR, "nb.wav")
     psd_filename = os.path.join(OUTPUT_DIR, "psd.png")
     demon_filename = os.path.join(OUTPUT_DIR, "demon.png")
     lofar_filename = os.path.join(OUTPUT_DIR, "lofar.png")
@@ -325,14 +327,16 @@ def _main():
     VAEComparisonCallback._save_audio(x_out, fs, wav_out)
     VAEComparisonCallback._save_audio(bb, fs, wav_bb)
     VAEComparisonCallback._save_audio(bb_mod, fs, wav_bb_mod)
+    VAEComparisonCallback._save_audio(nb, fs, wav_nb)
 
     x_in = x_in.numpy()
     x_out = x_out.numpy()
     bb = bb.numpy()
     bb_mod = bb_mod.numpy()
+    nb = nb.numpy()
 
-    noises=[x_in, x_out, bb, bb_mod]
-    labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation"]
+    noises=[x_in, x_out, bb, bb_mod, nb]
+    labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation", "Narrowband Noise"]
 
     lps_bb.plot_psds(
         filename=psd_filename,

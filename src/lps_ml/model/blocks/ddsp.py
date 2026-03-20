@@ -202,13 +202,6 @@ class Broadband(torch.nn.Module):
         return noise
 
 class BroadbandHarmonicModulatorHead(ml_stack1d.ConvEncoder):
-    """
-    ConvEncoder specialized for harmonic parameter estimation.
-
-    Output channels:
-        channel 0      → f0
-        channels 1..N  → harmonic amplitudes
-    """
 
     def __init__(
         self,
@@ -245,24 +238,17 @@ class BroadbandHarmonicModulatorHead(ml_stack1d.ConvEncoder):
         mod_index = params[:, 1:2]
         amps = params[:, 2:]
 
-        return f0, mod_index, amps
+        return torch.sigmoid(f0), torch.sigmoid(mod_index), torch.relu(amps)
 
 class BroadbandHarmonicModulator(torch.nn.Module):
-    """
-    DDSP-style harmonic synthesizer.
-
-    Uses:
-        HarmonicHead → parameter estimation
-        Oscillator bank → signal synthesis
-    """
 
     def __init__(
         self,
         head: BroadbandHarmonicModulatorHead,
         sample_rate: lps_qty.Frequency,
         samples_per_frame: int,
-        f0_min: lps_qty.Frequency = lps_qty.Frequency.hz(10.0),
-        f0_max: lps_qty.Frequency | None = None,
+        f0_min: lps_qty.Frequency = lps_qty.Frequency.rpm(30),
+        f0_max: lps_qty.Frequency = lps_qty.Frequency.rpm(300),
     ):
         super().__init__()
 
@@ -273,7 +259,7 @@ class BroadbandHarmonicModulator(torch.nn.Module):
         self.n_harmonics = head.n_harmonics
 
         self.f0_min = f0_min.get_hz()
-        self.f0_max = (f0_max or (sample_rate / 2.0)).get_hz()
+        self.f0_max = f0_max.get_hz()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -284,19 +270,15 @@ class BroadbandHarmonicModulator(torch.nn.Module):
             signal: (B, 1, T_audio)
         """
 
-        print(f"[Harmonic] input: {x.shape}")
+        print(f"[BBHarmonicModulator] input: {x.shape}")
 
         f0, mod_index, amps = self.head(x)
 
-        print(f"\t[Harmonic] f0: {f0.shape}")
-        print(f"\t[Harmonic] amps: {amps.shape}")
+        print(f"\t[BBHarmonicModulator] f0: {f0.shape}")
+        print(f"\t[BBHarmonicModulator] amps: {amps.shape}")
 
-        f0 = self.f0_min + (self.f0_max - self.f0_min) * torch.sigmoid(f0)
-        print(f"\t[Harmonic] f0: {f0.shape} -> {f0.min().item()*60:.1f} rpm to {f0.max().item()*60:.1f} rpm")
-
-        amps = torch.relu(amps)
-        mod_index = torch.sigmoid(mod_index)
-        print(f"\t[Harmonic] relu: {amps.shape}")
+        f0 = self.f0_min + (self.f0_max - self.f0_min) * f0
+        print(f"\t[BBHarmonicModulator] f0: {f0.shape} -> {f0.min().item()*60:.1f} rpm to {f0.max().item()*60:.1f} rpm")
 
         a0 = torch.sum(amps, dim=1, keepdim=True)/ (mod_index + 1e-6)
         total_energy = a0**2 + torch.sum(amps**2, dim=1, keepdim=True)/ 2
@@ -304,12 +286,11 @@ class BroadbandHarmonicModulator(torch.nn.Module):
         a0 = a0 / (torch.sqrt(total_energy) + 1e-6)
         amps = amps / (torch.sqrt(total_energy) + 1e-6)
 
-        print(f"\t[Harmonic] f0: {f0}")
-        print(f"\t[Harmonic] a0: {a0}")
-        print(f"\t[Harmonic] amps: {amps}")
+        print(f"\t[BBHarmonicModulator] f0: {f0}")
+        print(f"\t[BBHarmonicModulator] a0: {a0}")
+        print(f"\t[BBHarmonicModulator] amps: {amps}")
 
-        n_samples = self.samples_per_frame * f0.shape[-1]
-
+        # n_samples = self.samples_per_frame * f0.shape[-1]
         # f0 = torch.nn.functional.interpolate(f0,
         #             size=n_samples, mode='linear', align_corners=True)
         # a0 = torch.nn.functional.interpolate(a0,
@@ -320,32 +301,135 @@ class BroadbandHarmonicModulator(torch.nn.Module):
         f0 = f0.repeat_interleave(self.samples_per_frame, dim=2)
         a0 = a0.repeat_interleave(self.samples_per_frame, dim=2)
         amps = amps.repeat_interleave(self.samples_per_frame, dim=2)
-        print(f"\t[Harmonic] repeat f0: {f0.shape}")
-        print(f"\t[Harmonic] repeat a0: {a0.shape}")
-        print(f"\t[Harmonic] repeat amps: {amps.shape}")
+        print(f"\t[BBHarmonicModulator] repeat f0: {f0.shape}")
+        print(f"\t[BBHarmonicModulator] repeat a0: {a0.shape}")
+        print(f"\t[BBHarmonicModulator] repeat amps: {amps.shape}")
 
         omega = 2 * torch.pi * f0 / self.sample_rate
-        print(f"\t[Harmonic] omega: {omega.shape}")
+        print(f"\t[BBHarmonicModulator] omega: {omega.shape}")
         phase = torch.cumsum(omega, dim=-1)
-        print(f"\t[Harmonic] phase: {phase.shape}")
+        print(f"\t[BBHarmonicModulator] phase: {phase.shape}")
 
         k = torch.arange(
             1, self.n_harmonics + 1,
             device=x.device
         ).view(1, -1, 1)
-        print(f"\t[Harmonic] k: {k.shape}")
-
-        harmonic_freqs = k * f0
-        print(f"\t[Harmonic] k: {harmonic_freqs.shape}")
-        mask = (harmonic_freqs <= self.sample_rate).float()
+        print(f"\t[BBHarmonicModulator] k: {k.shape}")
 
         harm = torch.sum(
-            amps * mask * torch.sin(k * phase),
+            amps * torch.sin(k * phase),
             dim=1,
             keepdim=True
         )
-        print(f"\t[Harmonic] signal: {harm.shape}")
+        print(f"\t[BBHarmonicModulator] signal: {harm.shape}")
 
         signal = a0 + harm
+
+        return signal
+
+class NarrowbandHead(ml_stack1d.ConvEncoder):
+
+    def __init__(
+        self,
+        in_channels: int,
+        channels: typing.List[int],
+        n_freqs: int,
+
+        kernel_size: typing.Union[int, typing.List[int]] = 7,
+        stride: typing.Union[int, typing.List[int]] = 2,
+        dilation: typing.Union[int, typing.List[int]] = 1,
+
+        activation: typing.Callable = torch.nn.LeakyReLU,
+        norm: typing.Optional[typing.Callable] = torch.nn.BatchNorm1d,
+        dropout: float = 0.0,
+    ):
+        super().__init__(
+            in_channels=in_channels,
+            channels=channels,
+            project_dim=2*n_freqs,
+            kernel_size=kernel_size,
+            stride=stride,
+            dilation=dilation,
+            activation=activation,
+            norm=norm,
+            dropout=dropout,
+        )
+
+        self.n_freqs = n_freqs
+
+    def forward(self, x: torch.Tensor):
+        params = super().forward(x)
+        freqs, amps = torch.chunk(params, 2, dim=1)
+        return torch.sigmoid(freqs), torch.relu(amps)
+
+class Narrowband(torch.nn.Module):
+
+    def __init__(
+        self,
+        head: NarrowbandHead,
+        sample_rate: lps_qty.Frequency,
+        samples_per_frame: int,
+        f_min: lps_qty.Frequency = lps_qty.Frequency.hz(10.0),
+        f_max: lps_qty.Frequency | None = None,
+    ):
+        super().__init__()
+
+        self.head = head
+        self.sample_rate = sample_rate.get_hz()
+        self.samples_per_frame = samples_per_frame * head.compactness_factor
+
+        self.n_harmonics = head.n_freqs
+
+        self.f_min = f_min.get_hz()
+        self.f_max = (f_max or (sample_rate / 2.0)).get_hz()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (B, C, T_frames)
+
+        Returns:
+            signal: (B, 1, T_audio)
+        """
+
+        print(f"[Narrowband] input: {x.shape}")
+
+        freqs, amps = self.head(x)
+
+        print(f"\t[Narrowband] freqs: {freqs.shape}")
+        print(f"\t[Narrowband] amps: {amps.shape}")
+
+        freqs = self.f_min + (self.f_max - self.f_min) * torch.sigmoid(freqs)
+        print(f"\t[Narrowband] freqs: {freqs.shape} -> {freqs.min().item():.2f} hz to {freqs.max().item():.2f} hz")
+        print(f"\t[Narrowband] amps: {amps.shape} -> {amps.min().item():.2f} to {amps.max().item():.2f}")
+
+        # n_samples = self.samples_per_frame * f0.shape[-1]
+        # f0 = torch.nn.functional.interpolate(f0,
+        #             size=n_samples, mode='linear', align_corners=True)
+        # a0 = torch.nn.functional.interpolate(a0,
+        #             size=n_samples, mode='linear', align_corners=True)
+        # amps = torch.nn.functional.interpolate(amps,
+        #             size=n_samples, mode='linear', align_corners=True)
+
+        freqs = freqs.repeat_interleave(self.samples_per_frame, dim=2)
+        amps = amps.repeat_interleave(self.samples_per_frame, dim=2)
+        print(f"\t[Narrowband] repeat freqs: {freqs.shape}")
+        print(f"\t[Narrowband] repeat amps: {amps.shape}")
+
+        omega = 2 * torch.pi * freqs / self.sample_rate
+        print(f"\t[Narrowband] omega: {omega.shape}")
+
+        phase = torch.cumsum(omega, dim=-1)
+        print(f"\t[Narrowband] phase: {phase.shape}")
+
+        mask = (freqs <= self.sample_rate / 2).float()
+        print(f"\t[Narrowband] mask: {mask.shape}")
+
+        signal = torch.sum(
+            amps * mask * torch.sin(phase),
+            dim=1,
+            keepdim=True
+        )
+        print(f"\t[Narrowband] signal: {signal.shape}")
 
         return signal

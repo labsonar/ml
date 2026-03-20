@@ -136,7 +136,7 @@ class DDSP_VAE(lightning.LightningModule):
             up_factors=ratios,
         )
 
-        self.broadband = ml_ddsp.Broadband(
+        self.bb = ml_ddsp.Broadband(
             in_channels=dec_channels[-1],
             hidden_size=dec_channels[-1],
             out_channels=n_bands,
@@ -153,12 +153,26 @@ class DDSP_VAE(lightning.LightningModule):
             stride=noise_ratios,
         )
 
-        self.harmonic = ml_ddsp.BroadbandHarmonicModulator(
+        self.bb_mod = ml_ddsp.BroadbandHarmonicModulator(
             head=harmonic_head,
             sample_rate=sample_rate,
             samples_per_frame=n_bands,
             f0_min=lps_qty.Frequency.rpm(40),
             f0_max=lps_qty.Frequency.rpm(200),
+        )
+
+        noise_ratios=[4, 4, 4]
+        nb_head = ml_ddsp.NarrowbandHead(
+            in_channels=dec_channels[-1],
+            channels=[dec_channels[-1] for i in range(len(noise_ratios))],
+            n_freqs=16,
+            stride=noise_ratios,
+        )
+
+        self.nb = ml_ddsp.Narrowband(
+            head=nb_head,
+            sample_rate=sample_rate,
+            samples_per_frame=n_bands,
         )
 
         self.stft_loss = MultiSTFTLoss()
@@ -174,10 +188,10 @@ class DDSP_VAE(lightning.LightningModule):
         return -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
 
     def forward(self, x):
-        y, _, _, _, _ = self.int_forward(x)
+        y, _, _, _, _, _ = self.detailed_forward(x)
         return y
 
-    def int_forward(self, x):
+    def detailed_forward(self, x):
         """
         x: (B, 1, T)
         """
@@ -196,18 +210,20 @@ class DDSP_VAE(lightning.LightningModule):
         features = self.decoder(z)
         print("features: ", features.shape)
 
-        ship_bb_noise = self.broadband(features)
+        ship_bb_noise = self.bb(features)
         print("ship_bb_noise: ", ship_bb_noise.shape)
         ship_bb_noise = self.pqmf.reverse(ship_bb_noise)
         print("ship_bb_noise pqmf: ", ship_bb_noise.shape)
 
-        ship_bb_modulation = self.harmonic(features)
+        ship_bb_modulation = self.bb_mod(features)
         print("ship_bb_modulation: ", ship_bb_modulation.shape)
 
-        y = ship_bb_noise * ship_bb_modulation
-        # y = ship_bb_noise
+        ship_nb_noise = self.nb(features)
+        print("ship_nb_noise: ", ship_nb_noise.shape)
 
-        return y, mean, logvar, ship_bb_noise, ship_bb_modulation
+        y = ship_bb_noise * ship_bb_modulation + ship_nb_noise
+
+        return y, mean, logvar, ship_bb_noise, ship_bb_modulation, ship_nb_noise
 
     def shared_step(self, batch, stage: str):
         """
@@ -219,7 +235,7 @@ class DDSP_VAE(lightning.LightningModule):
         """
         x, _ = batch
 
-        y, mean, logvar, _, _ = self.int_forward(x)
+        y, mean, logvar, _, _, _ = self.detailed_forward(x)
 
         recon = self.stft_loss(x, y)
         kl = DDSP_VAE._kl_loss(mean, logvar)
