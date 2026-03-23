@@ -99,7 +99,7 @@ def main():
     def plot_subplot(data, title, idx):
         plt.subplot(2, 2, idx)
         plt.imshow(
-            20 * np.log10(data + 1e-7),
+            (data + 1e-7),
             aspect='auto',
             origin='lower'
         )
@@ -129,7 +129,7 @@ def main():
         plt.subplot(2, 2, idx)
         plt.plot(
             freq_bins,
-            20 * np.log10(data + 1e-7)
+            (data + 1e-7)
         )
         plt.title(title)
 

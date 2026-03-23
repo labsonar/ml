@@ -88,6 +88,61 @@ class MultiSTFTLoss(torch.nn.Module):
 
         return loss
 
+class MultiLofarLoss(MultiSTFTLoss):
+
+    @staticmethod
+    def soft_tpsw(x, kernel_size=None, hole_size=None):
+        # x: (B, F, T)
+
+        B, F, T = x.shape
+        device = x.device
+
+        if kernel_size is None:
+            kernel_size = int(round(F * .04 / 2.0 + 1))
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+
+        if hole_size is None:
+            hole_size = int(round(kernel_size / 8.0 + 1))
+            if hole_size % 2 == 0:
+                hole_size += 1
+
+        print("F: ", F)
+        print("T: ", T)
+        print("kernel_size: ", kernel_size)
+        print("hole_size: ", hole_size)
+
+        # cria kernel
+        kernel = torch.ones(kernel_size, device=device)
+
+        center = kernel_size // 2
+        half_hole = hole_size // 2
+        kernel[center - half_hole : center + half_hole + 1] = 0.0
+
+        kernel = kernel / kernel.sum()
+        kernel = kernel.view(1, 1, -1)
+
+        x_perm = x.permute(0, 2, 1)  # (B, T, F)
+        x_reshaped = x_perm.reshape(B * T, 1, F)
+
+        background = torch.nn.functional.conv1d(
+            x_reshaped,
+            kernel,
+            padding=kernel_size // 2
+        )
+
+        # volta ao shape original
+        background = background.reshape(B, T, F)
+        background = background.permute(0, 2, 1)
+
+        return torch.relu(torch.log(x/background))
+
+    def stft(self, x, fft_size, hop):
+        x = super().stft(x, fft_size, hop)
+        x = torch.abs(x)
+        # x = self.soft_tpsw(x)
+        return x
+
 class MultiMelLoss(torch.nn.Module):
 
     def __init__(
@@ -197,35 +252,6 @@ class DemonLoss(torch.nn.Module):
         #     x = torchaudio.functional.resample(x, orig_freq=self.sample_rate, new_freq=self.sample_rate//ratio)
         return x
 
-    def soft_tpsw(self, x, kernel_size=13, hole_size=3):
-        # x: (B, F, T)
-        B, F, T = x.shape
-        device = x.device
-
-        # cria kernel
-        kernel = torch.ones(kernel_size, device=device)
-
-        center = kernel_size // 2
-        half_hole = hole_size // 2
-        kernel[center - half_hole : center + half_hole + 1] = 0.0
-
-        kernel = kernel / kernel.sum()
-        kernel = kernel.view(1, 1, -1)
-
-        # reshape para conv1d
-        x_reshaped = x.reshape(B * F, 1, T)
-
-        background = torch.nn.functional.conv1d(
-            x_reshaped,
-            kernel,
-            padding=kernel_size // 2
-        )
-
-        # volta ao shape original
-        background = background.reshape(B, F, T)
-
-        return torch.relu(x - background)
-
     def demon_spectrogram(self, x: torch.Tensor):
         # x: (B, 1, T)
 
@@ -246,7 +272,7 @@ class DemonLoss(torch.nn.Module):
 
         X = torch.abs(X)
 
-        return self.soft_tpsw(X)
+        return MultiLofarLoss.soft_tpsw(X)
 
     def forward(self, x, y):
         X = self.demon_spectrogram(x)
@@ -287,23 +313,26 @@ class MultiDemonLoss(torch.nn.Module):
         return loss
 
 class Loss(torch.nn.Module):
+
     def __init__(self,
                  sample_rate: lps_qty.Frequency,
-                 stft_factor = 0.5,
-                 mel_factor = 0.5):
+                 stft_factor = 1,
+                 mel_factor = 1,
+                 lofar_factor = 3):
         super().__init__()
         self.stft_factor = stft_factor
         self.mel_factor = mel_factor
+        self.lofar_factor = lofar_factor
         self.stft_loss = MultiSTFTLoss()
         self.mel_loss = MultiMelLoss(sample_rate=int(sample_rate.get_hz()))
-
+        self.lofar_loss = MultiLofarLoss()
 
     def forward(self, x, y):
         loss = 0
         loss += self.stft_factor * self.stft_loss(x, y)
         loss += self.mel_factor * self.mel_loss(x, y)
+        loss += self.lofar_factor * self.lofar_loss(x, y)
         return loss
-
 
 class DDSP_VAE(lightning.LightningModule):
 
@@ -317,7 +346,7 @@ class DDSP_VAE(lightning.LightningModule):
         kernel=3,
         ratios=[4, 4, 4, 2],
 
-        noise_ratios=[8, 8, 4, 4],
+        noise_ratios=[8, 8, 4, 4], # 0,512s
         noise_bands=8,
         n_noise_channels=1,
 
@@ -363,7 +392,7 @@ class DDSP_VAE(lightning.LightningModule):
             n_noise_channels=n_noise_channels,
         )
 
-        bb_mod_ratios=[8, 8, 4, 4, 4]
+        bb_mod_ratios=[8, 8, 4, 4, 4] # 2s
         harmonic_head = ml_ddsp.BroadbandHarmonicModulatorHead(
             in_channels=dec_channels[-1],
             channels=[dec_channels[-1] for i in range(len(bb_mod_ratios))],
@@ -379,11 +408,11 @@ class DDSP_VAE(lightning.LightningModule):
             f0_max=lps_qty.Frequency.rpm(200),
         )
 
-        nb_ratios=[4, 4, 4]
+        nb_ratios=noise_ratios
         nb_head = ml_ddsp.NarrowbandHead(
             in_channels=dec_channels[-1],
             channels=[dec_channels[-1] for i in range(len(nb_ratios))],
-            n_freqs=16,
+            n_freqs=2,
             stride=nb_ratios,
         )
 
@@ -391,6 +420,9 @@ class DDSP_VAE(lightning.LightningModule):
             head=nb_head,
             sample_rate=sample_rate,
             samples_per_frame=n_bands,
+            f_min = lps_qty.Frequency.hz(10.0),
+            f_max = lps_qty.Frequency.hz(4000.0),
+
         )
 
         self.ch_ir = ml_ddsp.DifferentiableIR(
@@ -468,7 +500,7 @@ class DDSP_VAE(lightning.LightningModule):
 
 
         # y = signal + env_noise
-        y = ship
+        y = ship_bb_noise * ship_nb_noise
         print("y: ", y.shape)
 
         return y, mean, logvar, ship_bb_noise, ship_bb_modulation, ship_nb_noise, ship, ir, env_noise, signal

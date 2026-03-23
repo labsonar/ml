@@ -395,7 +395,7 @@ def _main():
         signals=noises,
         labels=labels,
         fs=fs,
-        zoom_samples=1024*64
+        zoom_samples=1024*4
     )
 
 
