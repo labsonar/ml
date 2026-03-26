@@ -40,18 +40,18 @@ def _main():
     fs = lps_qty.Frequency.hz(fs)
 
     processors_2d = {
-        "STFT": sonar_loss.STFT(sonar_loss.STFTConfig(n_fft=1024, hop_length=256, temporal_integration=10)),
-        "MEL": sonar_loss.Mel(sonar_loss.MelConfig(n_fft=1024, hop_length=256, sample_rate=fs, temporal_integration=10)),
-        "LOFAR": sonar_loss.Lofar(sonar_loss.LofarConfig(n_fft=1024, hop_length=256, temporal_integration=10)),
+        "STFT": sonar_loss.STFT(sonar_loss.STFTConfig(n_fft=4096, hop_length=2048, temporal_integration=10)),
+        "MEL": sonar_loss.Mel(sonar_loss.MelConfig(n_fft=4096, hop_length=2048, n_mels=256, sample_rate=fs, temporal_integration=10)),
+        "LOFAR": sonar_loss.Lofar(sonar_loss.LofarConfig(n_fft=4096, hop_length=2048, temporal_integration=10)),
         "DEMON": sonar_loss.Demon(sonar_loss.DemonConfig(n_fft=512, hop_length=256, temporal_integration=10, decimate=[16, 16])),
     }
 
     processors_1d = {
-        "STFT": sonar_loss.STFT(sonar_loss.STFTConfig(n_fft=1024, hop_length=256,
+        "STFT": sonar_loss.STFT(sonar_loss.STFTConfig(n_fft=4096, hop_length=2048,
             temporal_mean=True, temporal_integration=10)),
-        "MEL": sonar_loss.Mel(sonar_loss.MelConfig(n_fft=1024, hop_length=256,
+        "MEL": sonar_loss.Mel(sonar_loss.MelConfig(n_fft=4096, hop_length=2048, n_mels=256,
             temporal_mean=True, temporal_integration=10, sample_rate=fs)),
-        "LOFAR": sonar_loss.Lofar(sonar_loss.LofarConfig(n_fft=1024, hop_length=256,
+        "LOFAR": sonar_loss.Lofar(sonar_loss.LofarConfig(n_fft=4096, hop_length=2048,
             temporal_mean=True, temporal_integration=10)),
         "DEMON": sonar_loss.Demon(sonar_loss.DemonConfig(n_fft=512, hop_length=256,
             temporal_mean=True, temporal_integration=10, decimate=[16, 16])),
@@ -83,7 +83,8 @@ def _main():
         plt.imshow(
             spec,
             aspect="auto",
-            origin="lower"
+            origin="lower",
+            cmap='jet'
         )
         plt.title(name)
         plt.xlabel("Tempo")

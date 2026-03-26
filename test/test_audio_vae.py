@@ -20,14 +20,13 @@ import lps_ml.audio_processors as ml_procs
 import lps_ml.datasets.selection as ml_sel
 import lps_ml.model.audio_vae as lps_audio_vae
 
-OUTPUT_DIR = "./result/audio_vae"
-
 class LossPlotCallback(lightning.Callback):
 
-    def __init__(self):
+    def __init__(self, output_dir: str):
         super().__init__()
         self.train_losses = []
         self.val_losses = []
+        self.output_dir = output_dir
 
     def on_train_epoch_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
@@ -55,8 +54,9 @@ class LossPlotCallback(lightning.Callback):
         plt.legend()
         plt.grid(True)
 
-        plt.savefig(os.path.join(OUTPUT_DIR, "loss_curve.png"))
+        plt.savefig(os.path.join(self.output_dir, "loss_curve.png"))
         plt.close()
+
 
 class VAEComparisonCallback(lightning.Callback):
 
@@ -74,144 +74,49 @@ class VAEComparisonCallback(lightning.Callback):
 
         lps_sig.save_wav(signal_np, fs, filename)
 
-    def process_batch(self, model, input_data, tag):
-
-        with ml_utils.evaluating(model):
-            with torch.no_grad():
-                recon, _, _ = model(input_data)
-
-        for i in range(input_data.shape[0]):
-
-            x_in = input_data[i].detach().cpu().squeeze()
-            x_out = recon[i].detach().cpu().squeeze()
-
-            wav_filename = os.path.join(
-                OUTPUT_DIR,
-                f"sample_{i}.wav"
-            )
-            wav_in = os.path.join(
-                OUTPUT_DIR,
-                f"{tag}_sample_{i}_in.wav"
-            )
-            psd_filename = os.path.join(
-                OUTPUT_DIR,
-                f"{tag}_sample_{i}_psd.png"
-            )
-            demon_filename = os.path.join(
-                OUTPUT_DIR,
-                f"{tag}_sample_{i}_demon.png"
-            )
-            lofar_filename = os.path.join(
-                OUTPUT_DIR,
-                f"{tag}_sample_{i}_lofar.png"
-            )
-
-            self._save_audio(x_in, self.fs, wav_in)
-            self._save_audio(x_out, self.fs, wav_filename)
-
-            x_in = x_in.numpy()
-            x_out = x_out.numpy()
-
-            lps_bb.plot_psds(
-                filename=psd_filename,
-                noises=[x_in, x_out],
-                labels=["Input", "Reconstructed"],
-                fs=lps_qty.Frequency.hz(self.fs),
-                window_size=1024*16,
-                overlap=0.5,
-            )
-
-            lps_bb.plot_demon_lines(
-                filename=demon_filename,
-                signals=[x_in, x_out],
-                labels=["Input", "Reconstructed"],
-                fs=lps_qty.Frequency.hz(self.fs),
-            )
-
-            lps_analysis.plot_spectral_analysis(
-                filename=lofar_filename,
-                signals=[x_in, x_out],
-                labels=["Input", "Reconstructed"],
-                fs=lps_qty.Frequency.hz(self.fs),
-            )
-
-    def generate_reconstructions(
-        self,
-        model,
-        dataloader,
-        n_samples=2,
-        tag="reconstructions"
-    ):
-
-        batch = next(iter(dataloader))
-        x, _ = batch
-
-        k = min(n_samples, x.shape[0])
-        indices = random.sample(range(x.shape[0]), k=k)
-
-        x_selected = x[indices].to(model.device)
-
-        self.process_batch(model, x_selected, tag=tag)
-
-    def generate_from_latent_noise(
-        self,
-        model,
-        n_samples=5,
-        epoch_tag="latent"
-    ):
-
-        with ml_utils.evaluating(model):
-            with torch.no_grad():
-                generated = model.sample(
-                    num_samples=n_samples,
-                    device=model.device
-                )
-
-        for i in range(n_samples):
-
-            x_gen = generated[i].detach().cpu().squeeze()
-
-            filename = os.path.join(
-                OUTPUT_DIR,
-                f"{epoch_tag}_generated_{i}.wav"
-            )
-
-            self._save_audio(x_gen, self.fs, filename)
-
-    def on_train_epoch_end(self, trainer, pl_module):
-
-        if trainer.current_epoch % self.every_n_epochs != 0:
-            return
-
-        val_loader = trainer.datamodule.val_dataloader()
-
-        self.generate_reconstructions(
-            model=pl_module,
-            dataloader=val_loader,
-            n_samples=2,
-            tag=f"epoch_{trainer.current_epoch}"
-        )
 
 
 def _main():
     parser = argparse.ArgumentParser(
         description="Test AudioFolder dataset"
     )
-    parser.add_argument(
-        "input_dir",
-        type=str,
-        help="Root directory containing class subfolders"
+    parser.add_argument("--beta_kl", type=float, default=0.1)
+    parser.add_argument("--stft_factor", type=float, default=1)
+    parser.add_argument("--mel_factor", type=float, default=1)
+    parser.add_argument("--lofar_factor", type=float, default=0)
+    parser.add_argument("--demon_factor", type=float, default=0)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--capacity", type=int, default=16)
+    parser.add_argument("--pqmf_bands", type=int, default=8)
+    parser.add_argument("--latent_dim", type=int, default=32)
+    parser.add_argument("--noise_bands", type=int, default=8)
+    parser.add_argument("--noise_ratios",
+                        type=int,
+                        nargs='+',
+                        default=[8, 8, 4, 4],
+                        help="Lista de fatores de downsampling para o ruído"
     )
+    parser.add_argument("--nb_ratios",
+                        type=int,
+                        nargs='+',
+                        default=[8, 8, 4, 4],
+                        help="Lista de fatores de downsampling para o narrow band"
+    )
+    parser.add_argument("--output_dir", type=str, default="./result/audio_vae")
+    parser.add_argument("input_dir", type=str, help="Root directory containing class subfolders")
     args = parser.parse_args()
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output_dir = args.output_dir
+    os.makedirs(output_dir, exist_ok=True)
 
     torch.set_float32_matmul_precision('medium')
     ml_utils.set_seed()
 
     fs=lps_qty.Frequency.khz(16)
-    n_samples=int(2**17)
-    overlap=int(2**16)
+    n_samples=int(2**16)
+    overlap=0
+    # n_samples=int(2**17)    #8.192s
+    # overlap=int(2**16)      #4.096s
 
     # dm = ml_db.AudioFolder(
     #     file_processor=ml_procs.SampleProcessor(
@@ -240,22 +145,33 @@ def _main():
         num_workers=1
     )
 
-    model = lps_audio_vae.DDSP_VAE()
+    model = lps_audio_vae.DDSP_VAE(
+        n_bands=args.pqmf_bands,
+        capacity=args.capacity,
+        latent_dim=args.latent_dim,
+        beta_kl=args.beta_kl,
+        stft_factor=args.stft_factor,
+        mel_factor=args.mel_factor,
+        lofar_factor=args.lofar_factor,
+        demon_factor=args.demon_factor,
+        lr=args.lr,
+        noise_bands=args.noise_bands,
+        noise_ratios=args.noise_ratios,
+        nb_ratios=args.nb_ratios
+    )
 
     early_stop_callback = lightning_call.EarlyStopping(
         monitor="val/loss",
         min_delta=0.001,
-        patience=50,
+        patience=500,
         verbose=True,
         mode="min"
     )
 
-    loss_plot_callback = LossPlotCallback()
-
-    vae_comp = VAEComparisonCallback(5)
+    loss_plot_callback = LossPlotCallback(output_dir=output_dir)
 
     checkpoint_callback = lightning_call.ModelCheckpoint(
-        dirpath=OUTPUT_DIR,
+        dirpath=output_dir,
         filename="audio_vae-{epoch:04d}-{val_loss:.4f}",
         monitor="val/loss",
         save_top_k=1,      # salva o melhor modelo
@@ -267,46 +183,15 @@ def _main():
         max_epochs=10000,
         accelerator="auto",
         callbacks=[
-            # vae_comp,
             checkpoint_callback,
             early_stop_callback,
             loss_plot_callback
         ],
-        check_val_every_n_epoch=3
+        check_val_every_n_epoch=1
     )
-
-    # print("Generating reconstructions BEFORE training (random weights)...")
-    # dm.setup()
-    # val_loader = dm.val_dataloader()
-
-    # vae_comp.generate_reconstructions(
-    #     model=model,
-    #     dataloader=val_loader,
-    #     n_samples=2,
-    #     tag="before_training"
-    # )
-
-    # vae_comp.generate_from_latent_noise(
-    #     model=model,
-    #     n_samples=5,
-    #     epoch_tag="before_training_latent"
-    # )
 
     trainer.fit(model, datamodule=dm)
     print("Treino concluído. Gerando reconstruções finais...")
-
-    # vae_comp.generate_reconstructions(
-    #     model=model,
-    #     dataloader=val_loader,
-    #     n_samples=5,
-    #     tag="after_training"
-    # )
-
-    # vae_comp.generate_from_latent_noise(
-    #     model=model,
-    #     n_samples=10,
-    #     epoch_tag="after_training_latent"
-    # )
 
     model.eval()
     traindata = dm.train_dataloader()
@@ -319,44 +204,40 @@ def _main():
 
     x_in = x[0].detach().cpu().squeeze()
     x_out = y[0].detach().cpu().squeeze()
-    bb = bb[0].detach().cpu().squeeze()
-    bb_mod = bb_mod[0].detach().cpu().squeeze()
-    nb = nb[0].detach().cpu().squeeze()
-    ship = ship[0].detach().cpu().squeeze()
-    ir = ir[0].detach().cpu().squeeze()
-    signal = signal[0].detach().cpu().squeeze()
-    env_noise = env_noise[0].detach().cpu().squeeze()
+    # bb = bb[0].detach().cpu().squeeze()
+    # bb_mod = bb_mod[0].detach().cpu().squeeze()
+    # nb = nb[0].detach().cpu().squeeze()
+    # ship = ship[0].detach().cpu().squeeze()
+    # ir = ir[0].detach().cpu().squeeze()
+    # signal = signal[0].detach().cpu().squeeze()
+    # env_noise = env_noise[0].detach().cpu().squeeze()
 
-    wav_in = os.path.join(OUTPUT_DIR, "in.wav")
-    wav_out = os.path.join(OUTPUT_DIR, "out.wav")
-    wav_bb = os.path.join(OUTPUT_DIR, "bb.wav")
-    wav_bb_mod = os.path.join(OUTPUT_DIR, "bb_mod.wav")
-    wav_nb = os.path.join(OUTPUT_DIR, "nb.wav")
-    wav_ship = os.path.join(OUTPUT_DIR, "ship.wav")
-    # wav_ir = os.path.join(OUTPUT_DIR, "ir.wav")
-    # wav_signal = os.path.join(OUTPUT_DIR, "signal.wav")
-    # wav_env_noise = os.path.join(OUTPUT_DIR, "env_noise.wav")
-    psd_filename = os.path.join(OUTPUT_DIR, "psd.png")
-    demon_filename = os.path.join(OUTPUT_DIR, "demon.png")
-    lofar_filename = os.path.join(OUTPUT_DIR, "lofar.png")
-    time_filename = os.path.join(OUTPUT_DIR, "time.png")
+    wav_in = os.path.join(output_dir, "in.wav")
+    wav_out = os.path.join(output_dir, "out.wav")
+    # wav_bb = os.path.join(output_dir, "bb.wav")
+    # wav_bb_mod = os.path.join(output_dir, "bb_mod.wav")
+    # wav_nb = os.path.join(output_dir, "nb.wav")
+    # wav_ship = os.path.join(output_dir, "ship.wav")
+    # wav_ir = os.path.join(output_dir, "ir.wav")
+    # wav_signal = os.path.join(output_dir, "signal.wav")
+    # wav_env_noise = os.path.join(output_dir, "env_noise.wav")
 
     VAEComparisonCallback._save_audio(x_in, fs, wav_in)
     VAEComparisonCallback._save_audio(x_out, fs, wav_out)
-    VAEComparisonCallback._save_audio(bb, fs, wav_bb)
-    VAEComparisonCallback._save_audio(bb_mod, fs, wav_bb_mod)
-    VAEComparisonCallback._save_audio(nb, fs, wav_nb)
-    VAEComparisonCallback._save_audio(ship, fs, wav_ship)
+    # VAEComparisonCallback._save_audio(bb, fs, wav_bb)
+    # VAEComparisonCallback._save_audio(bb_mod, fs, wav_bb_mod)
+    # VAEComparisonCallback._save_audio(nb, fs, wav_nb)
+    # VAEComparisonCallback._save_audio(ship, fs, wav_ship)
     # VAEComparisonCallback._save_audio(ir, fs, wav_ir)
     # VAEComparisonCallback._save_audio(signal, fs, wav_signal)
     # VAEComparisonCallback._save_audio(env_noise, fs, wav_env_noise)
 
     x_in = x_in.numpy()
     x_out = x_out.numpy()
-    bb = bb.numpy()
-    bb_mod = bb_mod.numpy()
-    nb = nb.numpy()
-    ship = ship.numpy()
+    # bb = bb.numpy()
+    # bb_mod = bb_mod.numpy()
+    # nb = nb.numpy()
+    # ship = ship.numpy()
     # ir = ir.numpy()
     # signal = signal.numpy()
     # env_noise = env_noise.numpy()
@@ -364,8 +245,13 @@ def _main():
     # noises=[x_in, x_out, bb, bb_mod, nb, ship, ir, env_noise, signal]
     # labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation", "Narrowband Noise", "Ship", "Impulse Response", "Environmental Noise", "Signal"]
 
-    noises=[x_in, x_out, bb, bb_mod, nb, ship]
-    labels=["Input", "Reconstructed", "Broadband Noise", "Harmonic Modulation", "Narrowband Noise", "Ship"]
+    psd_filename = os.path.join(output_dir, "psd.png")
+    demon_filename = os.path.join(output_dir, "demon.png")
+    lofar_filename = os.path.join(output_dir, "lofar.png")
+    time_filename = os.path.join(output_dir, "time.png")
+
+    noises=[x_in, x_out]
+    labels=["Input", "Reconstructed"]
 
     lps_bb.plot_psds(
         filename=psd_filename,

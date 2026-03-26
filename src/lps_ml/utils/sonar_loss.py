@@ -242,9 +242,9 @@ class MultiResolutionLoss(torch.nn.Module):
         super().__init__()
 
         self.processors = torch.nn.ModuleList([
-            processor_cls(**cfg) for cfg in configs
+            processor_cls(cfg)
+            for cfg in configs
         ])
-
         self.eps = eps
         self.compute_log = compute_log
 
@@ -302,27 +302,27 @@ class SonarLoss(torch.nn.Module):
         self.demon_factor = demon_factor
 
         self.stft_loss = stft_loss or MultiResolutionLoss[STFT]([
-            STFTConfig(256, 128),
-            STFTConfig(512, 256),
-            STFTConfig(1024, 512),
+            STFTConfig(256, 128, temporal_integration=30),
+            STFTConfig(1024, 512, temporal_integration=20),
+            STFTConfig(4096, 2048, temporal_integration=10),
         ])
 
         self.mel_loss = mel_loss or MultiResolutionLoss[Mel]([
-            MelConfig(256, 128, n_mels=32),
-            MelConfig(512, 256, n_mels=64),
-            MelConfig(1024, 512, n_mels=128),
+            MelConfig(256, 128, n_mels=64, temporal_integration=30),
+            MelConfig(1024, 512, n_mels=128, temporal_integration=20),
+            MelConfig(4096, 2048, n_mels=256, temporal_integration=10),
         ])
 
         self.lofar_loss = lofar_loss or MultiResolutionLoss[Lofar]([
-            LofarConfig(256, 128),
-            LofarConfig(512, 256),
-            LofarConfig(1024, 512),
+            LofarConfig(256, 128, temporal_integration=30),
+            LofarConfig(1024, 512, temporal_integration=20),
+            LofarConfig(4096, 2048,temporal_integration=10),
         ])
 
         self.demon_loss = demon_loss or MultiResolutionLoss[Demon]([
-            DemonConfig(256, 128),
-            DemonConfig(512, 256),
-            DemonConfig(1024, 512),
+            DemonConfig(256, 128, temporal_integration=5, decimate=[32, 16]),
+            DemonConfig(512, 256, temporal_integration=10, decimate=[16, 16]),
+            DemonConfig(1024, 512, temporal_integration=20, decimate=[16, 8]),
         ])
 
     def forward(self, x, y):

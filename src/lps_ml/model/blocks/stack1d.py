@@ -72,11 +72,11 @@ class ConvFeatureExtractor(torch.nn.Module):
     #     return self.encoder(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        print(f"\t[Encoder] Input: {x.shape}")
+        #print(f"\t[Encoder] Input: {x.shape}")
 
         for i, layer in enumerate(self.encoder):
             x = layer(x)
-            print(f"\t[Encoder] Layer {i} ({layer.__class__.__name__}): {x.shape}")
+            #print(f"\t[Encoder] Layer {i} ({layer.__class__.__name__}): {x.shape}")
 
         return x
 
@@ -130,7 +130,7 @@ class ConvEncoder(torch.nn.Module):
     def forward(self, x: torch.Tensor):
         features = self.feature_extractor(x)
         project_params = self.latent_projection(features)
-        print(f"\t[Encoder] latent_projection: {project_params.shape}")
+        #print(f"\t[Encoder] latent_projection: {project_params.shape}")
         return project_params
 
 class ResidualStack(torch.nn.Module):
@@ -299,10 +299,10 @@ class ConvFeatureReconstructor(torch.nn.Module):
     #     return self.decoder(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        print(f"\t[Decoder] Input: {x.shape}")
+        #print(f"\t[Decoder] Input: {x.shape}")
 
         for i, layer in enumerate(self.decoder):
             x = layer(x)
-            print(f"\t[Decoder] Layer {i} ({layer.__class__.__name__}): {x.shape}")
+            #print(f"\t[Decoder] Layer {i} ({layer.__class__.__name__}): {x.shape}")
 
         return x
