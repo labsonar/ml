@@ -49,22 +49,6 @@ class Broadband(torch.nn.Module):
             norm=None,
         )
 
-        # layers = []
-        # for i, r in enumerate(ratios):
-        #     layers.append(
-        #         torch.nn.Conv1d(
-        #             channels[i],
-        #             channels[i + 1],
-        #             kernel_size=2 * r,
-        #             stride=r,
-        #             padding=r//2,
-        #         )
-        #     )
-        #     if i != len(ratios) - 1:
-        #         layers.append(activation(channels[i + 1]))
-
-        # self.net = torch.nn.Sequential(*layers)
-
         self.target_size = int(torch.prod(torch.tensor(ratios)).item())
 
     @staticmethod

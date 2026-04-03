@@ -318,3 +318,216 @@ class DDSP_VAE(lightning.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+class CONV_VAE(lightning.LightningModule):
+
+    def __init__(
+        self,
+
+        n_bands: int = 8,
+        capacity=16,
+        latent_dim=32,
+
+        # ratios=[4, 4, 4, 2], # 64ms
+        ratios=[8, 8, 4, 4], # 512ms
+
+        beta_kl=0.1,
+        stft_factor=1,
+        mel_factor=0,
+        lofar_factor=0,
+        demon_factor=0,
+
+        lr=1e-4,
+    ):
+        super().__init__()
+
+        self.save_hyperparameters()
+
+        self.pqmf = ml_pqmf.PQMF(n_bands)
+
+        in_ratios = [1] + ratios
+        in_layers = len(in_ratios)
+        enc_channels = [capacity * (2**i) for i in range(in_layers)]
+        dec_channels = list(reversed(enc_channels))
+
+        self.encoder = ConvEncoder(
+            in_channels=n_bands,
+            channels=enc_channels,
+            latent_dim=latent_dim,
+            kernel_size=[2 * r for r in in_ratios],
+            stride=in_ratios,
+            dilation=[1 + (2*i) for i in range(in_layers)],
+        )
+
+        self.decoder = ml_stack1d.ConvFeatureReconstructor(
+            in_channels=latent_dim,
+            adapt_channels=dec_channels[0],
+            channels=dec_channels[1:],
+            up_factors=ratios,
+        )
+
+        self.out_layer = torch.nn.Conv1d(
+                    in_channels=dec_channels[-1],
+                    out_channels=n_bands,
+                    kernel_size=1
+                )
+
+        self.loss = ml_loss.SonarLoss(
+            stft_factor=stft_factor,
+            mel_factor=mel_factor,
+            lofar_factor=lofar_factor,
+            demon_factor=demon_factor,
+        )
+
+    @staticmethod
+    def _reparameterize(mean, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mean + eps * std
+
+    @staticmethod
+    def _kl_loss(mean, logvar):
+        return -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
+
+    def forward(self, x):
+        y, _, _ = self.detailed_forward(x)
+        return y
+
+    def detailed_forward(self, x):
+        """
+        x: (B, 1, T)
+        """
+
+        x_sub = self.pqmf(x)
+        mean, logvar = self.encoder(x_sub)
+
+        z = CONV_VAE._reparameterize(mean, logvar)
+        y_cap = self.decoder(z)
+        y_sub = self.out_layer(y_cap)
+        y = self.pqmf.reverse(y_sub)
+
+        return y, mean, logvar
+
+    def shared_step(self, batch, stage: str):
+        """
+        Shared step for training and validation.
+
+        Args:
+            batch: input batch (B, 1, T)
+            stage: "train" | "val"
+        """
+        x, _ = batch
+
+        y, mean, logvar = self.detailed_forward(x)
+
+        recon = self.loss(x, y)
+        kl = CONV_VAE._kl_loss(mean, logvar)
+
+        loss = recon + self.hparams.beta_kl * kl
+
+        self.log(f"{stage}/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
+        self.log(f"{stage}/recon", recon, on_epoch=True)
+        self.log(f"{stage}/kl", kl, on_epoch=True)
+
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        return self.shared_step(batch, "train")
+
+    def validation_step(self, batch, batch_idx):
+        self.shared_step(batch, "val")
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+
+class DDSP(lightning.LightningModule):
+
+    def __init__(
+        self,
+
+        n_bands: int = 8,
+
+        nb_ratios=[8, 8, 4, 4, 4], # 2s
+
+        n_harmonics=8,
+        sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16),
+
+        stft_factor=1,
+        mel_factor=0,
+        lofar_factor=0,
+        demon_factor=0,
+
+        lr=1e-4,
+    ):
+        super().__init__()
+
+        self.save_hyperparameters()
+
+        self.pqmf = ml_pqmf.PQMF(n_bands)
+
+        nb_head = ml_ddsp.NarrowbandHead(
+            in_channels=n_bands,
+            channels=[n_bands for i in range(len(nb_ratios))],
+            n_freqs=n_harmonics,
+            kernel_size=[2 * r for r in nb_ratios],
+            stride=nb_ratios,
+            dilation=[1 + (2*i) for i in range(len(nb_ratios))],
+        )
+
+        self.nb = ml_ddsp.Narrowband(
+            head=nb_head,
+            sample_rate=sample_rate,
+            samples_per_frame=n_bands,
+            f_min = lps_qty.Frequency.hz(10),
+            f_max = lps_qty.Frequency.khz(4),
+        )
+
+        self.loss = ml_loss.SonarLoss(
+            stft_factor=stft_factor,
+            mel_factor=mel_factor,
+            lofar_factor=lofar_factor,
+            demon_factor=demon_factor,
+        )
+
+    def forward(self, x):
+
+        if self.hparams.n_bands > 1:
+            x_sub = self.pqmf(x)
+        else:
+            x_sub = x
+
+        y = self.nb(x_sub)
+
+        if self.hparams.n_bands > 1:
+            y = self.pqmf.reverse(y)
+
+        return y
+
+    def shared_step(self, batch, stage: str):
+        """
+        Shared step for training and validation.
+
+        Args:
+            batch: input batch (B, 1, T)
+            stage: "train" | "val"
+        """
+        x, _ = batch
+
+        y = self.forward(x)
+
+        recon = self.loss(x, y)
+        loss = recon
+
+        self.log(f"{stage}/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
+        self.log(f"{stage}/recon", recon, on_epoch=True)
+
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        return self.shared_step(batch, "train")
+
+    def validation_step(self, batch, batch_idx):
+        self.shared_step(batch, "val")
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
