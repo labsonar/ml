@@ -44,6 +44,7 @@ class Broadband(torch.nn.Module):
             project_dim=out_channels * noise_bands * n_noise_channels,
             kernel_size=[2 * r for r in ratios],
             stride=ratios,
+            dilation=[1 + 2*(len(ratios)-i) for i in range(len(ratios))],
             activation=lambda: torch.nn.LeakyReLU(0.2),
             norm=None,
         )

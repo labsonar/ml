@@ -25,7 +25,9 @@
 # python test/test_audio_vae.py --noise_ratios 8 8 8 4 --output_dir ./result/audio_vae/res_1s /data/unique_sample/env/
 # python test/test_audio_vae.py --noise_ratios 8 8 8 8 --output_dir ./result/audio_vae/res_2s /data/unique_sample/env/
 
-python test/test_audio_vae.py --capacity 8 --stft_factor 1 --mel_factor 0 --output_dir ./result/audio_vae_nb/stft /data/unique_sample/nb/
+# python test/test_audio_vae.py --capacity 8 --stft_factor 1 --mel_factor 0 --output_dir ./result/audio_vae_nb/stft /data/unique_sample/nb/
 # python test/test_audio_vae.py --capacity 8 --stft_factor 0 --mel_factor 1 --output_dir ./result/audio_vae_nb/mel /data/unique_sample/nb/
 # python test/test_audio_vae.py --capacity 8 --stft_factor 0 --mel_factor 0 --lofar_factor 1 --output_dir ./result/audio_vae_nb/lofar /data/unique_sample/nb/
 # python test/test_audio_vae.py --capacity 8 --stft_factor 1 --mel_factor 1 --lofar_factor 1 --output_dir ./result/audio_vae_nb/comb_loss /data/unique_sample/nb/
+
+python test/test_audio_vae.py --output_dir ./result/audio_vae/env  /data/datatest/env/

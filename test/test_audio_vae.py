@@ -163,7 +163,7 @@ def _main():
     early_stop_callback = lightning_call.EarlyStopping(
         monitor="val/loss",
         min_delta=0.001,
-        patience=500,
+        patience=300,
         verbose=True,
         mode="min"
     )

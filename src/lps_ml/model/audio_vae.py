@@ -67,7 +67,7 @@ class DDSP_VAE(lightning.LightningModule):
 
         noise_ratios=[8, 8, 4, 4], # 0,512s
         bb_mod_ratios=[8, 8, 4, 4, 4], # 2s
-        nb_ratios=[4, 4, 4, 4], # 0,512s
+        nb_ratios=[8, 8, 4, 4], # 0,512s
         noise_bands=8,
         n_noise_channels=1,
 
@@ -157,10 +157,14 @@ class DDSP_VAE(lightning.LightningModule):
             n_harmonics=12,
             # stride=nb_ratios,
             # dilation=[1 + (2*i) for i in range(len(nb_ratios))],
-            channels = [2, 4, 8, 16, 16, 32, 64, 64],
-            stride  = [4, 4, 4, 4, 4, 4, 4, 4],
-            kernel_size  = [7, 7, 7, 7, 7, 7, 7, 7],
-            dilation=[7, 7 , 5, 5, 3, 3, 1, 1],
+            # channels = [2, 4, 8, 16, 16, 32, 64, 64],
+            # stride  = [4, 4, 4, 4, 4, 4, 4, 4],
+            # kernel_size  = [7, 7, 7, 7, 7, 7, 7, 7],
+            # dilation=[7, 7 , 5, 5, 3, 3, 1, 1],
+            channels = [8, 8, 16, 16, 32, 64, 64],
+            stride  = [4, 4, 4, 4, 4, 4, 2],
+            kernel_size  = [7, 7, 7, 7, 7, 7, 5],
+            dilation=[7, 7 , 5, 5, 3, 3, 1],
         )
 
         self.nb_harm = ml_ddsp.NarrowbandHarmonic(
@@ -238,20 +242,20 @@ class DDSP_VAE(lightning.LightningModule):
         #print("x_sub: ", x_sub.shape)
 
         # mean, logvar = self.encoder(x_sub)
-        #print("mean: ", mean.shape)
-        #print("logvar: ", logvar.shape)
+        # # print("mean: ", mean.shape)
+        # # print("logvar: ", logvar.shape)
 
         # z = DDSP_VAE._reparameterize(mean, logvar)
-        #print("z: ", z.shape)
+        # # print("z: ", z.shape)
 
         # features = self.decoder(z)
-        #print("features: ", features.shape)
+        # # print("features: ", features.shape)
 
-        # ship_bb_noise = self.bb(x_sub)
-        # # #print("ship_bb_noise: ", ship_bb_noise.shape)
-        # if self.hparams.n_bands > 1:
-        #     ship_bb_noise = self.pqmf.reverse(ship_bb_noise)
-        # #print("ship_bb_noise pqmf: ", ship_bb_noise.shape)
+        ship_bb_noise = self.bb(x_sub)
+        # #print("ship_bb_noise: ", ship_bb_noise.shape)
+        if self.hparams.n_bands > 1:
+            ship_bb_noise = self.pqmf.reverse(ship_bb_noise)
+        #print("ship_bb_noise pqmf: ", ship_bb_noise.shape)
 
         # ship_bb_modulation = self.bb_mod(features)
         # #print("ship_bb_modulation: ", ship_bb_modulation.shape)
@@ -272,10 +276,11 @@ class DDSP_VAE(lightning.LightningModule):
         # env_noise = self.pqmf.reverse(env_noise)
         # #print("env_noise pqmf: ", env_noise.shape)
 
-        nb = self.nb_harm(x_sub)
+        # nb = self.nb_harm(x_sub)
 
         # y = signal + env_noise
-        y = nb
+        # y = nb
+        y = ship_bb_noise
         #print("y: ", y.shape)
 
         return y, None, None, None, None, None, None, None, None, None
