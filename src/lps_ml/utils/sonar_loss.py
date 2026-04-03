@@ -1,6 +1,10 @@
+import os
 import abc
 import typing
 import dataclasses
+
+import matplotlib.pyplot as plt
+import matplotlib.colors as color
 
 import lps_utils.quantities as lps_qty
 
@@ -26,6 +30,7 @@ class AudioProcessor(torch.nn.Module, abc.ABC):
         freq_dim: int = -2,
         kernel_size: int = None,
         hole_size: int = None,
+        eps: float = 1e-7
     ):
 
         freq_dim = freq_dim % x.ndim
@@ -66,7 +71,7 @@ class AudioProcessor(torch.nn.Module, abc.ABC):
 
         background = background.reshape(orig_shape)
         background = background.transpose(freq_dim, -1)
-        return torch.relu(torch.log(x) - torch.log(background))
+        return torch.relu(torch.log(x + eps) - torch.log(background + eps))
 
     @abc.abstractmethod
     def process(self, x: torch.Tensor) -> torch.Tensor:
@@ -191,9 +196,50 @@ class Decimate(torch.nn.Module):
             padding=self.kernel.shape[-1] // 2
         )
 
+class DiffBandpassFilter(torch.nn.Module):
+    def __init__(
+        self,
+        f_min: lps_qty.Frequency,
+        f_max: lps_qty.Frequency,
+        sample_rate: lps_qty.Frequency,
+        kernel_size: int = 511
+    ):
+        super().__init__()
+        self.kernel_size = kernel_size
+        if self.kernel_size % 2 == 0:
+            self.kernel_size += 1
+
+        # Frequências normalizadas (Nyquist = 0.5)
+        f_low = f_min / sample_rate
+        f_high = f_max / sample_rate
+
+        t = torch.arange(self.kernel_size) - (self.kernel_size - 1) / 2
+
+        # Resposta ao impulso de um filtro passa-baixa ideal: sinc(2*f*t)
+        # Passa-banda é a diferença entre dois passa-baixas
+        h_high = 2 * f_high * torch.sinc(2 * f_high * t)
+        h_low = 2 * f_low * torch.sinc(2 * f_low * t)
+
+        kernel = h_high - h_low
+
+        window = torch.hamming_window(self.kernel_size)
+        kernel = kernel * window
+
+        # Registrar como buffer para que o PyTorch mova para GPU com o modelo
+        # mas não tente treinar esses coeficientes
+        self.register_buffer("kernel", kernel.view(1, 1, -1))
+
+    def forward(self, x):
+        # x: [Batch, 1, Time]
+        padding = self.kernel_size // 2
+        return torch.nn.functional.conv1d(x, self.kernel, padding=padding)
+
 @dataclasses.dataclass
 class DemonConfig(STFTConfig):
     decimate: typing.List[int] = dataclasses.field(default_factory=lambda: [8, 8])
+    sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16)
+    f_min: lps_qty.Frequency = lps_qty.Frequency.khz(1)
+    f_max: lps_qty.Frequency = lps_qty.Frequency.khz(3)
 
 class Demon(AudioProcessor):
 
@@ -205,11 +251,21 @@ class Demon(AudioProcessor):
 
         self.demon_config = demon_config
 
+        if demon_config.f_min is None or demon_config.f_max is None:
+            self.bandpass = torch.nn.Identity()
+        else:
+            self.bandpass = DiffBandpassFilter(
+                f_min=demon_config.f_min,
+                f_max=demon_config.f_max,
+                sample_rate=demon_config.sample_rate
+            )
+
         self.decimators = torch.nn.ModuleList(
             [Decimate(d) for d in demon_config.decimate]
         )
 
     def process(self, x):
+        x = self.bandpass(x)
         x = torch.abs(x)
 
         for d in self.decimators:
@@ -266,7 +322,70 @@ class MultiResolutionLoss(torch.nn.Module):
 
                 loss += log_mag
 
-        return loss
+        return loss/len(self.processors)
+
+    @torch.no_grad()
+    def plot(
+        self,
+        inputs: typing.List[torch.Tensor],
+        output_path: str
+    ):
+
+        n_cols = len(inputs)
+        n_rows = len(self.processors)
+
+        fig, axes = plt.subplots(
+            n_rows, n_cols,
+            figsize=(5*n_cols, 3*n_rows),
+            squeeze=False,
+        constrained_layout=True
+        )
+
+        for row, proc in enumerate(self.processors):
+
+            processed = []
+
+            for signal in inputs:
+                sig_proc = proc(signal)
+                processed.append(sig_proc.squeeze().detach().cpu())
+
+            all_data = torch.cat([p.flatten() for p in processed])
+            vmin = all_data.min().item()
+            vmax = all_data.max().item()
+
+            im_ref = None
+
+            for col, data in enumerate(processed):
+
+                ax = axes[row, col]
+
+                if data.ndim == 2:
+                    im = ax.imshow(
+                        data.numpy(),
+                        aspect='auto',
+                        origin='lower',
+                        vmin=vmin,
+                        vmax=vmax
+                    )
+
+                    if im_ref is None:
+                        im_ref = im
+
+                elif data.ndim == 1:
+                    ax.plot(data.numpy())
+
+            if im_ref is not None:
+                cbar = fig.colorbar(
+                    im_ref,
+                    ax=axes[row, :],
+                    location='right',
+                    fraction=0.02,
+                    pad=0.02
+                )
+                cbar.set_label("Amplitude")
+
+        plt.savefig(output_path, dpi=300)
+        plt.close()
 
     def __class_getitem__(cls, processor_cls: typing.Type[AudioProcessor]):
 
@@ -320,9 +439,9 @@ class SonarLoss(torch.nn.Module):
         ])
 
         self.demon_loss = demon_loss or MultiResolutionLoss[Demon]([
-            DemonConfig(256, 128, temporal_integration=5, decimate=[32, 16]),
-            DemonConfig(512, 256, temporal_integration=10, decimate=[16, 16]),
-            DemonConfig(1024, 512, temporal_integration=20, decimate=[16, 8]),
+            # DemonConfig(256, 128, temporal_integration=5, decimate=[32, 16]),
+            # DemonConfig(512, 256, temporal_integration=2, decimate=[16, 16]),
+            DemonConfig(1024, 512, temporal_integration=5, decimate=[16, 8]),
         ])
 
     def forward(self, x, y):
@@ -341,3 +460,26 @@ class SonarLoss(torch.nn.Module):
             loss += self.demon_factor * self.demon_loss(x, y)
 
         return loss
+
+    @torch.no_grad()
+    def plot(
+        self,
+        inputs: typing.List[torch.Tensor],
+        output_dir: str
+    ):
+
+        if self.stft_factor:
+            self.stft_loss.plot(inputs=inputs,
+                                output_path=os.path.join(output_dir, "stft_loss.png"))
+
+        if self.mel_factor:
+            self.mel_loss.plot(inputs=inputs,
+                                output_path=os.path.join(output_dir, "mel_loss.png"))
+
+        if self.lofar_factor:
+            self.lofar_loss.plot(inputs=inputs,
+                                output_path=os.path.join(output_dir, "lofar_loss.png"))
+
+        if self.demon_factor:
+            self.demon_loss.plot(inputs=inputs,
+                                output_path=os.path.join(output_dir, "demon_loss.png"))

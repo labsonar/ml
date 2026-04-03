@@ -168,8 +168,6 @@ class ToFloatConverter(ml_core.AudioPipeline):
     ) -> typing.Tuple[lps_qty.Frequency, np.ndarray]:
 
         data_float = data.astype(np.float32) / 2**15
-        print("############  # # # # # #############")
-        print("data_float min:", np.min(data_float), "max:", np.max(data_float))
         data_float = np.clip(data_float, -1.0, 1.0)
         return fs, data_float
 
