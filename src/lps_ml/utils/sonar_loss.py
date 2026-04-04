@@ -11,7 +11,7 @@ import lps_utils.quantities as lps_qty
 import torch
 import torchaudio
 
-class AudioProcessor(torch.nn.Module, abc.ABC):
+class AudioProcessor(abc.ABC):
     """
     Classe base para transformar sinal [..., T] -> [..., F, T]
     ou [..., F] se temporal_mean=True
@@ -93,6 +93,9 @@ class AudioProcessor(torch.nn.Module, abc.ABC):
 
         return y
 
+    def __call__(self, x):
+        return self.forward(x)
+
     def apply_temporal_integration(self, y: torch.Tensor) -> torch.Tensor:
 
         k = self.temporal_integration
@@ -118,6 +121,9 @@ class STFTConfig:
     hop_length: int = 512
     temporal_mean: bool = False
     temporal_integration: int | None = None
+    sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16)
+    f_min: lps_qty.Frequency | None = None
+    f_max: lps_qty.Frequency | None = None
 
 class STFT(AudioProcessor):
 
@@ -134,14 +140,27 @@ class STFT(AudioProcessor):
             win_length=self.stft_config.n_fft,
             return_complex=True
         )
-        return torch.abs(ret)
+
+        spec = torch.abs(ret)
+
+        n_bins = self.stft_config.n_fft // 2 + 1
+
+        f_min = self.stft_config.f_min or lps_qty.Frequency.hz(0)
+        f_max = self.stft_config.f_max or self.stft_config.sample_rate / 2
+        fs = self.stft_config.sample_rate
+
+        k_min = int(self.stft_config.n_fft * (f_min/fs))
+        k_max = int(self.stft_config.n_fft * (f_max/fs))
+
+        k_min = max(0, k_min)
+        k_max = min(n_bins, k_max)
+
+        spec = spec[:, k_min:k_max, :]
+        return spec
 
 @dataclasses.dataclass
 class MelConfig(STFTConfig):
-    sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16)
     n_mels: int = 80
-    f_min: lps_qty.Frequency = lps_qty.Frequency.hz(0)
-    f_max: lps_qty.Frequency | None = None
 
 class Mel(AudioProcessor):
 
@@ -157,7 +176,7 @@ class Mel(AudioProcessor):
             hop_length=mel_config.hop_length,
             win_length=mel_config.n_fft,
             n_mels=mel_config.n_mels,
-            f_min=int(mel_config.f_min.get_hz()),
+            f_min=int(mel_config.f_min.get_hz()) if mel_config.f_min is not None else 0,
             f_max=int(mel_config.f_max.get_hz()) if mel_config.f_max is not None else None,
             power=1.0,
         )
@@ -172,7 +191,7 @@ class Lofar(STFT):
         y = super().process(x)
         return AudioProcessor.soft_tpsw_norm(y)
 
-class Decimate(torch.nn.Module):
+class Decimate:
     def __init__(self,
                  factor: int,
                  kernel_size: int = 63):
@@ -186,17 +205,20 @@ class Decimate(torch.nn.Module):
         kernel = (sinc * window)
         kernel = kernel / kernel.sum()
 
-        self.register_buffer("kernel", kernel.view(1, 1, -1))
+        self.kernel = kernel.view(1, 1, -1)
 
     def forward(self, x):
         return torch.nn.functional.conv1d(
             x,
-            self.kernel,
+            self.kernel.to(x.device),
             stride=self.factor,
             padding=self.kernel.shape[-1] // 2
         )
 
-class DiffBandpassFilter(torch.nn.Module):
+    def __call__(self, x):
+        return self.forward(x)
+
+class DiffBandpassFilter:
     def __init__(
         self,
         f_min: lps_qty.Frequency,
@@ -227,19 +249,23 @@ class DiffBandpassFilter(torch.nn.Module):
 
         # Registrar como buffer para que o PyTorch mova para GPU com o modelo
         # mas não tente treinar esses coeficientes
-        self.register_buffer("kernel", kernel.view(1, 1, -1))
+        self.kernel = kernel.view(1, 1, -1)
 
     def forward(self, x):
         # x: [Batch, 1, Time]
         padding = self.kernel_size // 2
-        return torch.nn.functional.conv1d(x, self.kernel, padding=padding)
+        return torch.nn.functional.conv1d(
+                x,
+                self.kernel.to(x.device),
+                padding=padding
+            )
+
+    def __call__(self, x):
+        return self.forward(x)
 
 @dataclasses.dataclass
 class DemonConfig(STFTConfig):
     decimate: typing.List[int] = dataclasses.field(default_factory=lambda: [8, 8])
-    sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16)
-    f_min: lps_qty.Frequency = lps_qty.Frequency.khz(1)
-    f_max: lps_qty.Frequency = lps_qty.Frequency.khz(3)
 
 class Demon(AudioProcessor):
 
@@ -260,9 +286,7 @@ class Demon(AudioProcessor):
                 sample_rate=demon_config.sample_rate
             )
 
-        self.decimators = torch.nn.ModuleList(
-            [Decimate(d) for d in demon_config.decimate]
-        )
+        self.decimators = [Decimate(d) for d in demon_config.decimate]
 
     def process(self, x):
         x = self.bandpass(x)
@@ -283,7 +307,7 @@ class Demon(AudioProcessor):
 
         return AudioProcessor.soft_tpsw_norm(y)
 
-class MultiResolutionLoss(torch.nn.Module):
+class MultiResolutionLoss:
     """
     Classe base (não usada diretamente).
     Use:
@@ -297,10 +321,10 @@ class MultiResolutionLoss(torch.nn.Module):
                  eps: float = 1e-7):
         super().__init__()
 
-        self.processors = torch.nn.ModuleList([
+        self.processors = [
             processor_cls(cfg)
             for cfg in configs
-        ])
+        ]
         self.eps = eps
         self.compute_log = compute_log
 
@@ -323,6 +347,9 @@ class MultiResolutionLoss(torch.nn.Module):
                 loss += log_mag
 
         return loss/len(self.processors)
+
+    def __call__(self, x, y):
+        return self.forward(x, y)
 
     @torch.no_grad()
     def plot(
@@ -397,7 +424,7 @@ class MultiResolutionLoss(torch.nn.Module):
 
         return _TypedMultiResolutionLoss
 
-class SonarLoss(torch.nn.Module):
+class SonarLoss:
 
     def __init__(
         self,
@@ -421,27 +448,28 @@ class SonarLoss(torch.nn.Module):
         self.demon_factor = demon_factor
 
         self.stft_loss = stft_loss or MultiResolutionLoss[STFT]([
-            STFTConfig(256, 128, temporal_integration=30),
-            STFTConfig(1024, 512, temporal_integration=20),
-            STFTConfig(4096, 2048, temporal_integration=10),
+            STFTConfig(int(2**12), int(2**11), temporal_mean=True),
+            STFTConfig(int(2**14), int(2**13), f_max=lps_qty.Frequency.khz(2), temporal_mean=True),
+            STFTConfig(int(2**16), int(2**15), f_max=lps_qty.Frequency.khz(0.5), temporal_mean=True),
         ])
 
         self.mel_loss = mel_loss or MultiResolutionLoss[Mel]([
-            MelConfig(256, 128, n_mels=64, temporal_integration=30),
-            MelConfig(1024, 512, n_mels=128, temporal_integration=20),
-            MelConfig(4096, 2048, n_mels=256, temporal_integration=10),
+            MelConfig(int(2**16), int(2**15), n_mels=1024, f_min=lps_qty.Frequency.khz(2), temporal_mean=True),
+            MelConfig(int(2**16), int(2**15), n_mels=1024, f_min=lps_qty.Frequency.khz(0.5), f_max=lps_qty.Frequency.khz(2), temporal_mean=True),
+            MelConfig(int(2**16), int(2**15), n_mels=1024, f_max=lps_qty.Frequency.khz(0.5), temporal_mean=True),
         ])
 
         self.lofar_loss = lofar_loss or MultiResolutionLoss[Lofar]([
-            LofarConfig(256, 128, temporal_integration=30),
-            LofarConfig(1024, 512, temporal_integration=20),
-            LofarConfig(4096, 2048,temporal_integration=10),
+            LofarConfig(int(2**12), int(2**11), temporal_mean=True),
+            LofarConfig(int(2**14), int(2**13), f_max=lps_qty.Frequency.khz(2), temporal_mean=True),
+            LofarConfig(int(2**16), int(2**15), f_max=lps_qty.Frequency.khz(0.5), temporal_mean=True),
         ])
 
         self.demon_loss = demon_loss or MultiResolutionLoss[Demon]([
             # DemonConfig(256, 128, temporal_integration=5, decimate=[32, 16]),
             # DemonConfig(512, 256, temporal_integration=2, decimate=[16, 16]),
-            DemonConfig(1024, 512, temporal_integration=5, decimate=[16, 8]),
+            DemonConfig(1024, 512, temporal_mean=True, decimate=[32, 16]),
+            DemonConfig(2048, 1024, temporal_mean=True, decimate=[8, 8]),
         ])
 
     def forward(self, x, y):
@@ -460,6 +488,9 @@ class SonarLoss(torch.nn.Module):
             loss += self.demon_factor * self.demon_loss(x, y)
 
         return loss
+
+    def __call__(self, x, y):
+        return self.forward(x, y)
 
     @torch.no_grad()
     def plot(
