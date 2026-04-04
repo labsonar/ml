@@ -95,9 +95,24 @@ def _main():
     parser.add_argument("--mel_factor", type=float, default=1)
     parser.add_argument("--lofar_factor", type=float, default=0)
     parser.add_argument("--demon_factor", type=float, default=0)
+
+    parser.add_argument("--resume_ckpt",
+                        type=str,
+                        default=None,
+                        help="Checkpoint para retomar treinamento"
+    )
+    parser.add_argument("--pretrained_ckpt",
+                        type=str,
+                        default=None,
+                        help="Checkpoint pré-treinado para fine-tuning"
+    )
+
     parser.add_argument("--output_dir", type=str, default="./result/audio_conv_vae")
     parser.add_argument("input_dir", type=str, help="Root directory containing class subfolders")
     args = parser.parse_args()
+
+    if args.resume_ckpt and args.pretrained_ckpt:
+        raise ValueError("Use apenas um: --resume_ckpt OU --pretrained_ckpt")
 
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
@@ -124,18 +139,31 @@ def _main():
         num_workers=1
     )
 
-    model = lps_audio_vae.CONV_VAE(
-        n_bands=args.pqmf_bands,
-        capacity=args.capacity,
-        latent_dim=args.latent_dim,
-        beta_kl=args.beta_kl,
-        stft_factor=args.stft_factor,
-        mel_factor=args.mel_factor,
-        lofar_factor=args.lofar_factor,
-        demon_factor=args.demon_factor,
-        lr=args.lr,
-        ratios=args.ratios,
-    )
+    if args.pretrained_ckpt is not None:
+        model = lps_audio_vae.CONV_VAE.load_from_checkpoint(
+            args.pretrained_ckpt,
+            beta_kl=args.beta_kl,
+            stft_factor=args.stft_factor,
+            mel_factor=args.mel_factor,
+            lofar_factor=args.lofar_factor,
+            demon_factor=args.demon_factor,
+            lr=args.lr,
+            strict=False
+        )
+    else:
+        model = lps_audio_vae.CONV_VAE(
+            n_bands=args.pqmf_bands,
+            capacity=args.capacity,
+            latent_dim=args.latent_dim,
+            ratios=args.ratios,
+
+            beta_kl=args.beta_kl,
+            stft_factor=args.stft_factor,
+            mel_factor=args.mel_factor,
+            lofar_factor=args.lofar_factor,
+            demon_factor=args.demon_factor,
+            lr=args.lr,
+        )
 
     early_stop_callback = lightning_call.EarlyStopping(
         monitor="val/loss",
@@ -167,7 +195,7 @@ def _main():
         check_val_every_n_epoch=1
     )
 
-    trainer.fit(model, datamodule=dm)
+    trainer.fit(model, datamodule=dm, ckpt_path=args.resume_ckpt)
     print("Treino concluído. Gerando reconstruções finais...")
 
     model.eval()
