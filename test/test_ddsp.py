@@ -39,9 +39,9 @@ class LossPlotCallback(lightning.Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
         metrics = trainer.callback_metrics
 
-        if "val/loss" in metrics:
+        if "val_loss" in metrics:
             self.val_losses.append(
-                metrics["val/loss"].detach().cpu().item()
+                metrics["val_loss"].detach().cpu().item()
             )
 
     def on_fit_end(self, trainer, pl_module):
@@ -58,6 +58,7 @@ class LossPlotCallback(lightning.Callback):
 
         plt.savefig(os.path.join(self.output_dir, "loss_curve.png"))
         plt.close()
+
 
 class VAEComparisonCallback(lightning.Callback):
 
@@ -81,21 +82,25 @@ def _main():
     parser = argparse.ArgumentParser(
         description="Test AudioFolder dataset"
     )
-    parser.add_argument("--capacity", type=int, default=16)
     parser.add_argument("--pqmf_bands", type=int, default=8)
-    parser.add_argument("--latent_dim", type=int, default=32)
-    parser.add_argument("--ratios",
+    parser.add_argument("--n_harmonics", type=int, default=8)
+    parser.add_argument("--nb_ratios",
                         type=int,
                         nargs='+',
                         default=[8, 8, 4, 4],
-                        help="Lista de fatores de downsampling para o ruído"
+                        help="Lista de fatores de downsampling para o ruído de banda estreita"
     )
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--beta_kl", type=float, default=0.1)
+    parser.add_argument("--bb_ratios",
+                        type=int,
+                        nargs='+',
+                        default=[8, 8, 8, 8, 4],
+                        help="Lista de fatores de downsampling para o ruído de banda larga"
+    )
     parser.add_argument("--stft_factor", type=float, default=1)
     parser.add_argument("--mel_factor", type=float, default=1)
     parser.add_argument("--lofar_factor", type=float, default=0)
     parser.add_argument("--demon_factor", type=float, default=0)
+    parser.add_argument("--lr", type=float, default=1e-4)
 
     parser.add_argument("--resume_ckpt",
                         type=str,
@@ -108,7 +113,7 @@ def _main():
                         help="Checkpoint pré-treinado para fine-tuning"
     )
 
-    parser.add_argument("--output_dir", type=str, default="./result/audio_conv_vae")
+    parser.add_argument("--output_dir", type=str, default="./result/ddsp/bb")
     parser.add_argument("input_dir", type=str, help="Root directory containing class subfolders")
     args = parser.parse_args()
 
@@ -122,8 +127,8 @@ def _main():
     ml_utils.set_seed()
 
     fs=lps_qty.Frequency.khz(16)
-    n_samples=int(2**17)    #8.192s
-    overlap=int(2**16)      #4.096s
+    n_samples=int(2**17)
+    overlap=0
 
     dm = ml_db.AudioFolder(
         file_processor=ml_procs.SampleProcessor(
@@ -132,16 +137,15 @@ def _main():
                 overlap=overlap,
                 pipelines=[ml_procs.ToFloatConverter()]
             ),
-        cv=ml_cv.SimpleSplitCV(),
+        cv=ml_cv.FiveByTwo(),
         input_dir=args.input_dir,
         batch_size=16,
         num_workers=1
     )
 
     if args.pretrained_ckpt is not None:
-        model = lps_audio_vae.CONV_VAE.load_from_checkpoint(
+        model = lps_audio_vae.DDSP.load_from_checkpoint(
             args.pretrained_ckpt,
-            beta_kl=args.beta_kl,
             stft_factor=args.stft_factor,
             mel_factor=args.mel_factor,
             lofar_factor=args.lofar_factor,
@@ -150,13 +154,12 @@ def _main():
             strict=False
         )
     else:
-        model = lps_audio_vae.CONV_VAE(
+        model = lps_audio_vae.DDSP(
             n_bands=args.pqmf_bands,
-            capacity=args.capacity,
-            latent_dim=args.latent_dim,
-            ratios=args.ratios,
+            n_harmonics=args.n_harmonics,
+            nb_ratios=args.nb_ratios,
+            bb_ratios=args.bb_ratios,
 
-            beta_kl=args.beta_kl,
             stft_factor=args.stft_factor,
             mel_factor=args.mel_factor,
             lofar_factor=args.lofar_factor,
@@ -167,7 +170,7 @@ def _main():
     early_stop_callback = lightning_call.EarlyStopping(
         monitor="val/loss",
         min_delta=0.001,
-        patience=100,
+        patience=300,
         verbose=True,
         mode="min"
     )
@@ -204,7 +207,7 @@ def _main():
     x = x[:1].to(model.device)
 
     with torch.no_grad():
-        y = model(x)
+        y, h_t = model.internal_forward(x)
 
     model.loss.plot([x, y], output_dir=output_dir)
 
@@ -217,6 +220,13 @@ def _main():
     VAEComparisonCallback._save_audio(x, fs, wav_in)
     VAEComparisonCallback._save_audio(y, fs, wav_out)
 
+
+    lps_analysis.plot_in_time(
+        filename=os.path.join(output_dir, "h_t.png"),
+        signals=[h_t],
+        labels=["h(t)"],
+        fs=fs,
+    )
 
 if __name__ == "__main__":
     _main()

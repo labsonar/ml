@@ -182,7 +182,7 @@ class Mel(AudioProcessor):
         )
 
     def process(self, x):
-        return self.mel(x.squeeze(1))
+        return self.mel.to(x.device)(x.squeeze(1))
 
 LofarConfig = STFTConfig
 class Lofar(STFT):
@@ -328,10 +328,12 @@ class MultiResolutionLoss:
         self.eps = eps
         self.compute_log = compute_log
 
-    def forward(self, input_a, input_b):
-        loss = 0.0
+    def calculate_losses(self, input_a, input_b):
+        losses = []
 
         for proc in self.processors:
+            loss = 0.0
+
             proc_a = proc(input_a)
             proc_b = proc(input_b)
 
@@ -346,7 +348,13 @@ class MultiResolutionLoss:
 
                 loss += log_mag
 
-        return loss/len(self.processors)
+            losses.append(loss)
+
+        return losses
+
+    def forward(self, input_a, input_b):
+        losses = self.calculate_losses(input_a, input_b)
+        return torch.stack(losses).mean()
 
     def __call__(self, x, y):
         return self.forward(x, y)
@@ -463,14 +471,22 @@ class SonarLoss:
             LofarConfig(int(2**12), int(2**11), temporal_mean=True),
             LofarConfig(int(2**14), int(2**13), f_max=lps_qty.Frequency.khz(2), temporal_mean=True),
             LofarConfig(int(2**16), int(2**15), f_max=lps_qty.Frequency.khz(0.5), temporal_mean=True),
-        ])
+        ], compute_log=False)
 
         self.demon_loss = demon_loss or MultiResolutionLoss[Demon]([
             # DemonConfig(256, 128, temporal_integration=5, decimate=[32, 16]),
             # DemonConfig(512, 256, temporal_integration=2, decimate=[16, 16]),
-            DemonConfig(1024, 512, temporal_mean=True, decimate=[32, 16]),
+            # DemonConfig(1024, 512, temporal_mean=True, decimate=[32, 16]),
             DemonConfig(2048, 1024, temporal_mean=True, decimate=[8, 8]),
-        ])
+        ], compute_log=False)
+
+    def compute_all_losses(self, x, y):
+        return {
+            'stft_loss': self.stft_loss.calculate_losses(x, y),
+            'mel_loss': self.mel_loss.calculate_losses(x, y),
+            'lofar_loss': self.lofar_loss.calculate_losses(x, y),
+            'demon_loss': self.demon_loss.calculate_losses(x, y),
+        }
 
     def forward(self, x, y):
         loss = 0.0
