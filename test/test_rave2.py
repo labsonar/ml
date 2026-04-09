@@ -14,9 +14,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 MODELS = [
-    ("v1", "/data/models/16k_v1.ts"),
-    ("v4", "/data/models/16k_v4.ts"),
-    ("v6", "/data/models/16k_v6.ts"),
+    # ("v0_best", "/data/models/v0_best.ts"),
+    # ("v0_best_0995", "/data/models/v0_best_0995.ts"),
+    ("v0_4M6", "/data/models/v0_4M6.ts"),
 ]
 
 
