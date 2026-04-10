@@ -447,9 +447,13 @@ class DDSP(lightning.LightningModule):
 
         n_bands: int = 8,
 
-        nb_ratios=[8, 8, 4, 4, 4], # 2s
+        bb_ratios=[8, 8, 4, 4, 4], # 2s
+        bb_noise_bands=8,
+        bb_n_noise_channels=1,
 
+        nb_ratios=[8, 8, 4, 4, 4], # 2s
         n_harmonics=8,
+
         sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16),
 
         stft_factor=1,
@@ -465,22 +469,42 @@ class DDSP(lightning.LightningModule):
 
         self.pqmf = ml_pqmf.PQMF(n_bands)
 
-        nb_head = ml_ddsp.NarrowbandHead(
+        self.bb = ml_ddsp.Broadband(
+            in_channels=n_bands,
+            hidden_size=n_bands,
+            out_channels=n_bands,
+            ratios=bb_ratios,
+            noise_bands=bb_noise_bands,
+            n_noise_channels=bb_n_noise_channels,
+        )
+
+        self.env = ml_ddsp.Broadband(
+            in_channels=n_bands,
+            hidden_size=n_bands,
+            out_channels=n_bands,
+            ratios=bb_ratios,
+            noise_bands=bb_noise_bands,
+            n_noise_channels=bb_n_noise_channels,
+        )
+
+        nb_head = ml_ddsp.NarrowbandHarmonicHead(
             in_channels=n_bands,
             channels=[n_bands for i in range(len(nb_ratios))],
-            n_freqs=n_harmonics,
+            n_harmonics=n_harmonics,
             kernel_size=[2 * r for r in nb_ratios],
             stride=nb_ratios,
             dilation=[1 + (2*i) for i in range(len(nb_ratios))],
         )
 
-        self.nb = ml_ddsp.Narrowband(
+        self.nb = ml_ddsp.NarrowbandHarmonic(
             head=nb_head,
             sample_rate=sample_rate,
             samples_per_frame=n_bands,
             f_min = lps_qty.Frequency.hz(10),
             f_max = lps_qty.Frequency.khz(4),
         )
+
+        self.ir = ml_ddsp.ChannelIR()
 
         self.loss = ml_loss.SonarLoss(
             stft_factor=stft_factor,
@@ -489,18 +513,25 @@ class DDSP(lightning.LightningModule):
             demon_factor=demon_factor,
         )
 
-    def forward(self, x):
+    def internal_forward(self, x):
 
         if self.hparams.n_bands > 1:
             x_sub = self.pqmf(x)
         else:
             x_sub = x
 
-        y = self.nb(x_sub)
+        # y = self.nb(x_sub)
+        bb = self.bb(x_sub)
+        env = self.env(x_sub)
 
         if self.hparams.n_bands > 1:
-            y = self.pqmf.reverse(y)
+            bb = self.pqmf.reverse(bb)
+            env = self.pqmf.reverse(env)
 
+        return self.ir(bb) + env, self.ir.build_impulse()
+
+    def forward(self, x):
+        y, _ = self.internal_forward(x)
         return y
 
     def shared_step(self, batch, stage: str):

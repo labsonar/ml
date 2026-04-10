@@ -2,13 +2,12 @@ import typing
 import torch
 
 from lps_utils.log import warning
-
 class Conv1DBlock(torch.nn.Module):
     """
     1D convolutional downsampling block.
 
     Structure:
-        Conv1d -> Normalization -> Activation
+        Normalization -> Activation -> Dropout -> Conv1d (Pre-Activation Style)
     """
 
     def __init__(
@@ -25,14 +24,23 @@ class Conv1DBlock(torch.nn.Module):
     ):
         super().__init__()
 
-        activation = activation or torch.nn.LeakyReLU
-        norm = norm or torch.nn.BatchNorm1d
+        activation_fn = activation or torch.nn.LeakyReLU
+        norm_fn = norm or torch.nn.BatchNorm1d
 
         if padding is None:
             effective_kernel = kernel_size + (kernel_size - 1) * (dilation - 1)
             padding = (effective_kernel - 1) // 2
 
         layers = []
+
+        if norm_fn is not None:
+            layers.append(norm_fn(in_channels))
+
+        if activation_fn is not None:
+            layers.append(activation_fn() if isinstance(activation_fn, type) else activation_fn)
+
+        if dropout > 0:
+            layers.append(torch.nn.Dropout(dropout))
 
         layers.append(
             torch.nn.Conv1d(
@@ -45,19 +53,9 @@ class Conv1DBlock(torch.nn.Module):
             )
         )
 
-        if norm is not None:
-            layers.append(norm(out_channels))
-
-        if dropout > 0:
-            layers.append(torch.nn.Dropout(dropout))
-
-        if activation is not None:
-            layers.append(activation())
-
         self.block = torch.nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Apply the downsampling convolution block."""
         return self.block(x)
 
 class UpsamplingBlock(torch.nn.Module):
