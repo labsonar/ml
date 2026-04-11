@@ -18,6 +18,8 @@ class Resampler(ml_core.AudioPipeline):
 
     def process(self, fs: lps_qty.Frequency, data: np.array) \
             -> typing.Tuple[lps_qty.Frequency, np.array]:
+        if fs == self.fs_out:
+            return fs, data
 
         decimated_signal = lps_signal.decimate(data, fs/self.fs_out)
         return self.fs_out, decimated_signal

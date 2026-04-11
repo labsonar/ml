@@ -35,21 +35,14 @@ class VAEEncoder(ml_core.AudioPipeline):
 
         x = torch.from_numpy(data).to(self.device)
 
-        print("##########")
-        print("x: ", x.shape)
-
         if x.ndim == 1:
             x = x.unsqueeze(0).unsqueeze(0)
 
         elif x.ndim == 2:
             x = x.unsqueeze(1)
 
-        print("x: ", x.shape)
-
         with torch.inference_mode():
             z = self.model.encode(x)
-
-        print("z: ", z.shape)
 
         z = z.detach().cpu().numpy()
         z = np.squeeze(z, axis=0)

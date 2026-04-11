@@ -70,7 +70,7 @@ class ProcessedDataset(torch_data.Dataset):
 
         if self.transform:
             fragment = self.transform(fragment)
-        return torch.from_numpy(fragment).float(), row['target']
+        return torch.from_numpy(fragment).float(), row["Target"]
 
 class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     """ Basic DataModule for process and load audio datasets. """
@@ -105,6 +105,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         self.train_df = None
         self.val_df = None
         self.test_df = None
+        self.id_to_target = None
 
         self.processed_dir = os.path.join(processed_dir, f"{hash(self)}")
         self.csv_file = os.path.join(self.processed_dir, "description.csv")
@@ -176,7 +177,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         df = df[df["file_id"].isin(valid_ids)].reset_index(drop=True)
 
         id_to_target = dict(zip(self.file_ids, self.targets))
-        df["target"] = df["file_id"].map(id_to_target)
+        df[self.target_column] = df["file_id"].map(id_to_target)
 
         self.dataframe = df
         self.folds = self.cv.apply(self.file_ids, self.targets)
@@ -230,6 +231,57 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             shuffle=shuffle,
             num_workers=self.num_workers
         )
+
+    def _dataloader_dict(self,
+                         df: pd.DataFrame | None,
+                         shuffle: bool) -> typing.Dict[int, torch_data.DataLoader]:
+        """ Returns a dictionary mapping target -> DataLoader. """
+
+        if df is None:
+            raise RuntimeError("df is not initialized. Call setup() first.")
+
+        loaders = {}
+
+        grouped = df.groupby(self.target_column)
+
+        for target, df_target in grouped:
+
+            dataset = ProcessedDataset(
+                df_target,
+                self.processed_dir,
+                self.transform
+            )
+
+            loader = torch_data.DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                shuffle=shuffle,
+                num_workers=0,
+            )
+
+            loaders[int(target)] = loader
+
+        return loaders
+
+    def train_dataloader_dict(self, shuffle: bool = False) \
+                -> typing.Dict[int, torch_data.DataLoader]:
+        """ Returns a dictionary mapping target -> DataLoader. Using only train all data. """
+        return self._dataloader_dict(self.train_df, shuffle=shuffle)
+
+    def val_dataloader_dict(self, shuffle: bool = False) \
+                -> typing.Dict[int, torch_data.DataLoader]:
+        """ Returns a dictionary mapping target -> DataLoader. Using only val all data. """
+        return self._dataloader_dict(self.val_df, shuffle=shuffle)
+
+    def test_dataloader_dict(self, shuffle: bool = False) \
+                -> typing.Dict[int, torch_data.DataLoader]:
+        """ Returns a dictionary mapping target -> DataLoader. Using only test all data. """
+        return self._dataloader_dict(self.test_df, shuffle=shuffle)
+
+    def all_dataloader_dict(self, shuffle: bool = False) \
+                -> typing.Dict[int, torch_data.DataLoader]:
+        """ Returns a dictionary mapping target -> DataLoader. For all data. """
+        return self._dataloader_dict(self.dataframe, shuffle=shuffle)
 
     def get_n_targets(self) -> int:
         return len(set(self.targets))
