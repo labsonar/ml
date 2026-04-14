@@ -86,16 +86,11 @@ def _main():
     print(dm.to_compile_df())
     print(ml_utils.format_header(60))
     print()
-    print(ml_utils.format_header(60,"pairs_to_full_df"))
-    print(dm.pairs_to_df())
-    print(ml_utils.format_header(60))
-    print()
     print(ml_utils.format_header(60,"Training"))
     print()
     print(dm.to_df())
 
     dm.to_df().to_csv("./result/paired.csv")
-    dm.pairs_to_df().to_csv("./result/pairs_to_full_df.csv")
 
     train_loader = dm.train_dataloader()
 

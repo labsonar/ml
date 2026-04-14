@@ -49,33 +49,11 @@ class BaseDataModule(lightning.LightningDataModule):
     def get_n_targets(self) -> int:
         """ Return the number of targets in dataset. """
 
-class ProcessedDataset(torch_data.Dataset):
-    """ Simple dataset for processed data in .npy format """
+class BaseProcessedDataset(torch_data.Dataset):
+    """Base dataset with common fragment loading logic."""
 
     def __init__(self, dataframe: pd.DataFrame, processed_dir: str, transform=None):
         self.df = dataframe.reset_index(drop=True)
-        self.processed_dir = processed_dir
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        fragment_path = os.path.join(self.processed_dir, f"{row['id_fragment']}.npy")
-        fragment = np.load(fragment_path)
-
-        if fragment.ndim == 1:
-            fragment = fragment[np.newaxis, :]
-
-        if self.transform:
-            fragment = self.transform(fragment)
-        return torch.from_numpy(fragment).float(), row["Target"]
-
-class PairedProcessedDataset(torch_data.Dataset):
-
-    def __init__(self, df_pairs: pd.DataFrame, processed_dir: str, transform=None):
-        self.df = df_pairs.reset_index(drop=True)
         self.processed_dir = processed_dir
         self.transform = transform
 
@@ -93,6 +71,20 @@ class PairedProcessedDataset(torch_data.Dataset):
             x = self.transform(x)
 
         return torch.from_numpy(x).float()
+
+class ProcessedDataset(BaseProcessedDataset):
+    """Dataset for single fragments with target."""
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        x = self._load_fragment(row["id_fragment"])
+        y = row["Target"]
+
+        return x, y
+
+class PairedProcessedDataset(BaseProcessedDataset):
+    """Dataset for paired fragments."""
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
@@ -320,3 +312,90 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     def to_compile_df(self) -> pd.DataFrame:
         """ Returns dataset compiled information as a DataFrame. """
         return self.description_df.groupby(self.target_column).size().reset_index(name='Qty')
+
+class PairedAudioDataModule:
+    _DEFAULT_PAIR_BUILDERS = {}
+
+    def __class_getitem__(cls, base_class):
+
+        class _Paired(base_class):
+
+            def __init__(self, *args, pair_builder=None, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                if pair_builder is not None:
+                    self.pair_builder = pair_builder
+                else:
+                    if base_class not in cls._DEFAULT_PAIR_BUILDERS:
+                        raise ValueError(
+                            f"No default pair_builder registered for {base_class.__name__}"
+                        )
+                    self.pair_builder = cls._DEFAULT_PAIR_BUILDERS[base_class]
+
+            def _expand_file_pairs_to_fragments(self,
+                                                df_pairs: pd.DataFrame,
+                                                df_frag: pd.DataFrame) -> pd.DataFrame:
+
+                if df_pairs.empty:
+                    return df_pairs
+
+                pairs = []
+
+                grouped = df_frag.groupby("file_id")
+
+                for _, row in df_pairs.iterrows():
+
+                    fid1 = row["file_id_1"]
+                    fid2 = row["file_id_2"]
+
+                    if fid1 not in grouped.groups or fid2 not in grouped.groups:
+                        continue
+
+                    df_a = grouped.get_group(fid1)
+                    df_b = grouped.get_group(fid2)
+
+                    min_len = min(len(df_a), len(df_b))
+
+                    for k in range(min_len):
+                        pairs.append({
+                            "id_fragment_1": df_a.iloc[k]["id_fragment"],
+                            "id_fragment_2": df_b.iloc[k]["id_fragment"],
+                        })
+
+                return pd.DataFrame(pairs)
+
+            def _build_dataloader(self,
+                                df: pd.DataFrame,
+                                shuffle: bool) -> torch_data.DataLoader:
+
+                if df is None:
+                    raise RuntimeError("df is not initialized. Call setup() first.")
+
+                file_ids = df["file_id"].unique()
+                df_meta = self.description_df[
+                    self.description_df[self.id_column].isin(file_ids)
+                ]
+
+                file_pairs = self.pair_builder(df_meta)
+
+                pairs_df = self._expand_file_pairs_to_fragments(file_pairs, df)
+
+                return torch_data.DataLoader(
+                    PairedProcessedDataset(
+                        pairs_df,
+                        self.processed_dir,
+                        self.transform
+                    ),
+                    batch_size=self.batch_size,
+                    shuffle=shuffle,
+                    num_workers=self.num_workers
+                )
+
+        return _Paired
+
+    @classmethod
+    def register_pair_builder(cls, base_class):
+        def decorator(func):
+            cls._DEFAULT_PAIR_BUILDERS[base_class] = func
+            return func
+        return decorator

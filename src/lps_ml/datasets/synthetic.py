@@ -133,187 +133,62 @@ class Iemanja(ml_core.AudioDataModule):
             transform=None,
         )
 
-class IemanjaPaired(Iemanja):
+@ml_core.PairedAudioDataModule.register_pair_builder(Iemanja)
+def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
     """
-    DataModule for paired audio learning based on the Iemanja synthetic dataset.
+    Default file-level pairing strategy for Paired[Iemanja].
 
-    This class extends the standard Iemanja DataModule to support paired data
-    loading. Pairing is defined at the file level using a user-provided `pair_builder`
-    function, and then expanded to fragment-level pairs.
+    This function generates pairs of file IDs based on the dataset metadata.
+    It is intended to be used as the default `pair_builder` for the class.
 
-    The `pair_builder` function must operate on a metadata DataFrame
-    and return a DataFrame with the following columns:
+    Pairing logic:
+        - Groups samples by "DYNAMIC_CATALOG_ID", assuming same ship and dynamics.
+        - Within each group, identifies distinct "SCENARIO_CATALOG_ID" values.
+        - Selects the first two scenarios.
+        - Pairs files from these two scenarios in a one-to-one fashion.
 
-        - "file_id_1": Identifier of the source file
-        - "file_id_2": Identifier of the target file
+    The output defines directional pairs:
+        file_id_1 → file_id_2
 
-    Notes:
-        - The pairing strategy can be customized by passing a different
-          `pair_builder` function at initialization.
-        - The default pairing strategy (`build_file_pairs_auto`) assumes that
-          files sharing the same DYNAMIC_CATALOG_ID can be paired across
-          different SCENARIO_CATALOG_ID values.
+    Args:
+        df_meta (pd.DataFrame):
+            Metadata DataFrame containing at least the following columns:
+                - "ID" (or column defined by `id_column`)
+                - "DYNAMIC_CATALOG_ID"
+                - "SCENARIO_CATALOG_ID"
+
+    Returns:
+        pd.DataFrame:
+            A DataFrame with the following columns:
+                - "file_id_1": Source file ID
+                - "file_id_2": Target file ID
     """
 
-    @staticmethod
-    def build_file_pairs_auto(df_meta: pd.DataFrame) -> pd.DataFrame:
-        """
-        Default file-level pairing strategy for IemanjaPaired.
+    pairs = []
 
-        This function generates pairs of file IDs based on the dataset metadata.
-        It is intended to be used as the default `pair_builder` for the class.
+    grouped = df_meta.groupby(["DYNAMIC_CATALOG_ID"])
 
-        Pairing logic:
-            - Groups samples by "DYNAMIC_CATALOG_ID", assuming same ship and dynamics.
-            - Within each group, identifies distinct "SCENARIO_CATALOG_ID" values.
-            - Selects the first two scenarios.
-            - Pairs files from these two scenarios in a one-to-one fashion.
+    for _, group in grouped:
 
-        The output defines directional pairs:
-            file_id_1 → file_id_2
+        scen_ids = group["SCENARIO_CATALOG_ID"].unique()
 
-        Args:
-            df_meta (pd.DataFrame):
-                Metadata DataFrame containing at least the following columns:
-                    - "ID" (or column defined by `id_column`)
-                    - "DYNAMIC_CATALOG_ID"
-                    - "SCENARIO_CATALOG_ID"
+        if len(scen_ids) < 2:
+            continue
 
-        Returns:
-            pd.DataFrame:
-                A DataFrame with the following columns:
-                    - "file_id_1": Source file ID
-                    - "file_id_2": Target file ID
-        """
+        scen_a = scen_ids[0]
+        scen_b = scen_ids[1]
 
-        pairs = []
+        df_a = group[group["SCENARIO_CATALOG_ID"] == scen_a]
+        df_b = group[group["SCENARIO_CATALOG_ID"] == scen_b]
 
-        grouped = df_meta.groupby(["DYNAMIC_CATALOG_ID"])
+        min_len = min(len(df_a), len(df_b))
 
-        for _, group in grouped:
+        for k in range(min_len):
+            pairs.append({
+                "file_id_1": df_a.iloc[k]["ID"],
+                "file_id_2": df_b.iloc[k]["ID"],
+            })
 
-            scen_ids = group["SCENARIO_CATALOG_ID"].unique()
+    return pd.DataFrame(pairs)
 
-            if len(scen_ids) < 2:
-                continue
-
-            scen_a = scen_ids[0]
-            scen_b = scen_ids[1]
-
-            df_a = group[group["SCENARIO_CATALOG_ID"] == scen_a]
-            df_b = group[group["SCENARIO_CATALOG_ID"] == scen_b]
-
-            min_len = min(len(df_a), len(df_b))
-
-            for k in range(min_len):
-                pairs.append({
-                    "file_id_1": df_a.iloc[k]["ID"],
-                    "file_id_2": df_b.iloc[k]["ID"],
-                })
-
-        return pd.DataFrame(pairs)
-
-    def __init__(self,
-                 *args,
-                 pair_builder: typing.Callable[[pd.DataFrame], pd.DataFrame] = None,
-                 **kwargs):
-
-        super().__init__(*args, **kwargs)
-
-        self.pair_builder = pair_builder or self.build_file_pairs_auto
-
-    def _expand_file_pairs_to_fragments(self,
-                                        df_pairs: pd.DataFrame,
-                                        df_frag: pd.DataFrame) -> pd.DataFrame:
-
-        if df_pairs.empty:
-            return df_pairs
-
-        pairs = []
-
-        grouped = df_frag.groupby("file_id")
-
-        for _, row in df_pairs.iterrows():
-
-            fid1 = row["file_id_1"]
-            fid2 = row["file_id_2"]
-
-            if fid1 not in grouped.groups or fid2 not in grouped.groups:
-                continue
-
-            df_a = grouped.get_group(fid1)
-            df_b = grouped.get_group(fid2)
-
-            min_len = min(len(df_a), len(df_b))
-
-            for k in range(min_len):
-                pairs.append({
-                    "id_fragment_1": df_a.iloc[k]["id_fragment"],
-                    "id_fragment_2": df_b.iloc[k]["id_fragment"],
-                })
-
-        return pd.DataFrame(pairs)
-
-    def _build_dataloader(self,
-                          df: pd.DataFrame,
-                          shuffle: bool) -> torch_data.DataLoader:
-
-        if df is None:
-            raise RuntimeError("df is not initialized. Call setup() first.")
-
-        file_ids = df["file_id"].unique()
-        df_meta = self.description_df[
-            self.description_df[self.id_column].isin(file_ids)
-        ]
-
-        file_pairs = self.pair_builder(df_meta)
-
-        pairs_df = self._expand_file_pairs_to_fragments(file_pairs, df)
-
-        return torch_data.DataLoader(
-            ml_core.PairedProcessedDataset(
-                pairs_df,
-                self.processed_dir,
-                self.transform
-            ),
-            batch_size=self.batch_size,
-            shuffle=shuffle,
-            num_workers=self.num_workers
-        )
-
-    def pairs_to_df(self) -> pd.DataFrame:
-
-        df = self.dataframe
-
-        file_ids = df["file_id"].unique()
-
-        df_meta = self.description_df[
-            self.description_df[self.id_column].isin(file_ids)
-        ]
-
-        file_pairs = self.pair_builder(df_meta)
-        pairs_df = self._expand_file_pairs_to_fragments(file_pairs, df)
-
-        if pairs_df.empty:
-            return pairs_df
-
-        base_df = self.dataframe
-
-        df_input = base_df.add_prefix("input_")
-        df_target = base_df.add_prefix("target_")
-
-        merged = pairs_df.merge(
-            df_input,
-            left_on="id_fragment_1",
-            right_on="input_id_fragment",
-            how="left"
-        )
-
-        merged = merged.merge(
-            df_target,
-            left_on="id_fragment_2",
-            right_on="target_id_fragment",
-            how="left"
-        )
-
-        return merged
+IemanjaPaired = ml_core.PairedAudioDataModule[Iemanja]
