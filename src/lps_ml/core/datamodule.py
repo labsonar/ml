@@ -72,6 +72,36 @@ class ProcessedDataset(torch_data.Dataset):
             fragment = self.transform(fragment)
         return torch.from_numpy(fragment).float(), row["Target"]
 
+class PairedProcessedDataset(torch_data.Dataset):
+
+    def __init__(self, df_pairs: pd.DataFrame, processed_dir: str, transform=None):
+        self.df = df_pairs.reset_index(drop=True)
+        self.processed_dir = processed_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.df)
+
+    def _load_fragment(self, frag_id):
+        path = os.path.join(self.processed_dir, f"{frag_id}.npy")
+        x = np.load(path)
+
+        if x.ndim == 1:
+            x = x[np.newaxis, :]
+
+        if self.transform:
+            x = self.transform(x)
+
+        return torch.from_numpy(x).float()
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        x1 = self._load_fragment(row["id_fragment_1"])
+        x2 = self._load_fragment(row["id_fragment_2"])
+
+        return x1, x2
+
 class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     """ Basic DataModule for process and load audio datasets. """
 
@@ -205,32 +235,29 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         self.val_df = df[df["group"] == ml_cv.FoldRole.VALIDATION]
         self.test_df = df[df["group"] == ml_cv.FoldRole.TEST]
 
-    def train_dataloader(self):
-        return torch_data.DataLoader(
-                ProcessedDataset(self.train_df, self.processed_dir, self.transform),
-                batch_size=self.batch_size,
-                shuffle=True,
-                num_workers=self.num_workers)
+    def _build_dataloader(self,
+                          df: pd.DataFrame,
+                          shuffle: bool) -> torch_data.DataLoader:
 
-    def val_dataloader(self):
         return torch_data.DataLoader(
-                ProcessedDataset(self.val_df, self.processed_dir, self.transform),
-                batch_size=self.batch_size,
-                num_workers=self.num_workers)
-
-    def test_dataloader(self):
-        return torch_data.DataLoader(
-                ProcessedDataset(self.test_df, self.processed_dir, self.transform),
-                batch_size=self.batch_size,
-                num_workers=self.num_workers)
-
-    def all_dataloader(self, shuffle: bool = False):
-        return torch_data.DataLoader(
-            ProcessedDataset(self.dataframe, self.processed_dir, self.transform),
+            ProcessedDataset(df, self.processed_dir, self.transform),
             batch_size=self.batch_size,
             shuffle=shuffle,
             num_workers=self.num_workers
         )
+
+    def train_dataloader(self, shuffle: bool = True):
+        return self._build_dataloader(self.train_df, shuffle)
+
+    def val_dataloader(self, shuffle: bool = False):
+        return self._build_dataloader(self.val_df, shuffle)
+
+    def test_dataloader(self, shuffle: bool = False):
+        return self._build_dataloader(self.test_df, shuffle)
+
+    def all_dataloader(self, shuffle: bool = False):
+        return self._build_dataloader(self.dataframe, shuffle)
+
 
     def _dataloader_dict(self,
                          df: pd.DataFrame | None,
