@@ -1,7 +1,10 @@
 import math
 import torch
 
-class TimeEmbedding(torch.nn.Module):
+class SinusoidalPositionalEncoding(torch.nn.Module):
+    """ Sinusoidal Positional Encoding - Attention Is All You Need
+    https://arxiv.org/pdf/1706.03762
+    """
 
     def __init__(self, time_embed_dim: int):
         super().__init__()

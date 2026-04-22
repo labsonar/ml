@@ -249,9 +249,13 @@ class Selector:
     def apply(self, input_df: pd.DataFrame) -> pd.DataFrame:
         """Apply all filters, then label the resulting DataFrame."""
         df = input_df.copy()
+        print("apply: ", len(df))
         for f in self.filters:
             df = f.apply(df)
-        return self.target.label(df)
+            print("\t filt: ", len(df))
+        df = self.target.label(df)
+        print("target: ", len(df))
+        return df
 
     def grouped_column(self) -> str:
         return self.target.grouped_column()

@@ -250,7 +250,6 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     def all_dataloader(self, shuffle: bool = False):
         return self._build_dataloader(self.dataframe, shuffle)
 
-
     def _dataloader_dict(self,
                          df: pd.DataFrame | None,
                          shuffle: bool) -> typing.Dict[int, torch_data.DataLoader]:

@@ -54,7 +54,7 @@ class CNN2D(lps_mlp.MLP):
         for i in range(1, len(conv_channels)):
 
             dilation = conv_dilation[i-1]
-            effective_kernel = kernel_size + (kernel_size - 1) * (conv_dilation - 1)
+            effective_kernel = kernel_size + (kernel_size - 1) * (dilation - 1)
             current_padding = int((effective_kernel - 1) / 2)
 
             conv_layers.append(torch.nn.Conv2d(

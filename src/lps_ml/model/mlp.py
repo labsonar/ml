@@ -95,7 +95,7 @@ class MLP(lightning.LightningModule):
                 _: int = 0) -> torch.Tensor:
         """Executes a single training step."""
         loss = self._shared_step(batch)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self,
@@ -103,7 +103,7 @@ class MLP(lightning.LightningModule):
                 _: int = 0) -> torch.Tensor:
         """Executes a single validation step."""
         loss = self._shared_step(batch)
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def test_step(self,

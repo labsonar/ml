@@ -79,13 +79,11 @@ class DecoderBlock(torch.nn.Module):
             activation=activation,
         )
 
-        out_channels = out_channels + skip_channels
-
         layers = []
-        for _ in range(n_conv_layers):
+        for i in range(n_conv_layers):
             layers.append(
                 lps_conv1d.Conv1DBlock(
-                    in_channels=out_channels,
+                    in_channels= (out_channels + skip_channels) if i == 0 else out_channels,
                     out_channels=out_channels,
                     kernel_size=kernel_size,
                     stride=1,
@@ -129,7 +127,7 @@ class UNet1D(torch.nn.Module):
         super().__init__()
 
         self.input_proj = torch.nn.Conv1d(in_channels * 2, base_channels, kernel_size=1)
-        self.time_embeder = lps_embedding.TimeEmbedding(time_embed_dim)
+        self.time_embeder = lps_embedding.SinusoidalPositionalEncoding(time_embed_dim)
 
         self.encoder = torch.nn.ModuleList()
 
@@ -153,7 +151,7 @@ class UNet1D(torch.nn.Module):
                 )
             )
 
-            self.skip_channels.append(out_ch)
+            self.skip_channels.append(in_ch)
             in_ch = out_ch
 
         self.bottleneck = lps_stack1d.ResidualStack(
@@ -161,7 +159,7 @@ class UNet1D(torch.nn.Module):
             n_blocks=2 * num_res_blocks,
             activation=activation,
         )
-        self.temb_bottleneck = lps_embedding.FiLM(in_ch, time_embed_dim)
+        self.temb_bottleneck = lps_embedding.FiLM(time_embed_dim, in_ch)
 
         self.decoder = torch.nn.ModuleList()
 
@@ -187,25 +185,49 @@ class UNet1D(torch.nn.Module):
 
         self.output_proj = torch.nn.Conv1d(base_channels, in_channels, kernel_size=1)
 
-    def forward(self, x: torch.Tensor, cond: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, cond: torch.Tensor, target: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
 
-        t_emb = self.time_embed(t)
+        #print("cond:", cond.shape)
+        #print("target:", target.shape)
+        #print("t:", t.shape)
 
-        x = torch.cat([x, cond], dim=1)
+        t_emb = self.time_embeder(t)
+
+        #print("t_emb:", t_emb.shape)
+
+        x = torch.cat([target, cond], dim=1)
+        #print("x:", x.shape)
         x = self.input_proj(x)
+        #print("input:", x.shape)
 
         skips = []
 
-        for block in self.encoder:
+        #print("\n=== ENCODER ===")
+        for i, block in enumerate(self.encoder):
             x, skip = block(x, t_emb)
+            #print(f"[ENC {i}] x: {x.shape} | skip: {skip.shape}")
             skips.append(skip)
+
+        #print("\n=== BOTTLENECK ===")
+        #print("before bottleneck:", x.shape)
 
         x = self.temb_bottleneck(x, t_emb)
         x = self.bottleneck(x)
 
+        #print("after bottleneck :", x.shape)
+
+        #print("\n=== DECODER ===")
         for block in self.decoder:
             skip = skips.pop()
+
+            #print(f"\n[DEC {i}] BEFORE")
+            #print("x   :", x.shape)
+            #print("skip:", skip.shape)
+
             x = block(x, skip, t_emb)
+
+            #print(f"[DEC {i}] AFTER")
+            #print("x   :", x.shape)
 
         x = self.output_proj(x)
 

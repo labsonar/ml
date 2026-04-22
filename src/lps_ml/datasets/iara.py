@@ -147,6 +147,27 @@ class ShipLengthClassifier(enum.Enum):
                         n_targets = 4,
                         function = lambda df: ShipLengthClassifier.classify(df[colunm_id]).value))
 
+class ShipBackgroundClassifier(ml_sel.Target):
+
+    def __init__(self):
+        super().__init__(n_targets=2, include_others=False)
+
+    def label(self, input_df: pd.DataFrame) -> pd.DataFrame:
+
+        def classify(row: pd.Series) -> int:
+            dataset = row["Dataset"]
+
+            if dataset in ["E", "H"]:
+                return 0
+
+            return 1
+
+        df = input_df.copy()
+        df[self.DEFAULT_TARGET_HEADER] = df.apply(classify, axis=1)
+
+        return df
+
+
 class CargoShipClassifier(enum.Enum):
     """ Enum defining modes for selecting ships for classification tasks. """
     IDENTIFIED = 0
@@ -284,10 +305,11 @@ class IARA(ml_core.AudioDataModule):
 
         df = data_collection.to_df()
         selection = selection or ShipLengthClassifier.as_selector()
+        description_df = selection.apply(df)
 
         super().__init__(file_loader = IARA.loader(data_base_dir=data_dir),
                          file_processor = file_processor,
-                         description_df = selection.apply(df),
+                         description_df = description_df,
                          processed_dir = processed_dir,
                          batch_size = batch_size,
                          num_workers = num_workers,

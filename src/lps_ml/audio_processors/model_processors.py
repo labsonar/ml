@@ -26,6 +26,24 @@ class VAEEncoder(ml_core.AudioPipeline):
                 "Use um modelo RAVE exportado corretamente."
             )
 
+        if not hasattr(self.model, "decode"):
+            print("[WARNING] Model has no decode() method")
+
+    def decode(self, z: np.ndarray) -> np.ndarray:
+        """
+        Decode latent representation back to waveform.
+        """
+
+        z = torch.from_numpy(z).to(self.device)
+
+        if z.ndim == 2:
+            z = z.unsqueeze(0)
+
+        with torch.inference_mode():
+            x = self.model.decode(z)
+
+        x = x.detach().cpu().numpy()
+        return np.squeeze(x, axis=0)
 
     def process(
         self,
