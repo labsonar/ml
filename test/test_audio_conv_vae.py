@@ -18,13 +18,13 @@ def _main():
     parser = argparse.ArgumentParser(
         description="Test AudioFolder dataset"
     )
-    parser.add_argument("--capacity", type=int, default=16)
+    parser.add_argument("--capacity", type=int, default=32)
     parser.add_argument("--pqmf_bands", type=int, default=8)
-    parser.add_argument("--latent_dim", type=int, default=16)
+    parser.add_argument("--latent_dim", type=int, default=64)
     parser.add_argument("--ratios",
                         type=int,
                         nargs='+',
-                        default=[4, 4, 4, 2],
+                        default=[8, 4, 4, 2],
                         help="Lista de fatores de downsampling para o ruído"
     )
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -89,7 +89,6 @@ def _main():
             lofar_factor=args.lofar_factor,
             demon_factor=args.demon_factor,
             lr=args.lr,
-            # strict=False
         )
     else:
         model = lps_audio_vae.CONV_VAE(

@@ -104,7 +104,7 @@ def default_checkpoint(output_dir: str) -> lightning_call.ModelCheckpoint:
     """ Model checkpoint callback to save the best model based on "val/loss" and also the last. """
     return lightning_call.ModelCheckpoint(
         dirpath=output_dir,
-        filename="audio_vae-{epoch:04d}",
+        filename="best",
         monitor="val/loss",
         save_top_k=1,
         mode="min",

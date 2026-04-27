@@ -8,6 +8,7 @@ import random
 import datetime
 import shutil
 import typing
+import collections
 
 import numpy as np
 
@@ -89,3 +90,41 @@ def save_wav(data: np.ndarray | torch.Tensor,
         data = data.detach().cpu().numpy()
 
     lps_sig.save_wav(data, fs, filename)
+
+def shortest_relative_path(paths: list[str]) -> list[tuple[str, str]]:
+    """
+        Returns a list of tuples (name, path) where name is the shortest unique relative path
+        for each file in paths.
+    """
+    paths = [os.path.abspath(p) for p in paths]
+
+    depth = 1
+
+    while True:
+        name_map = collections.defaultdict(list)
+
+        for p in paths:
+            parts = p.split(os.sep)
+            suffix_parts = parts[-depth:]
+
+            suffix_parts = list(suffix_parts)
+            suffix_parts[-1] = os.path.splitext(suffix_parts[-1])[0]
+
+            name = "/".join(suffix_parts)
+            name_map[name].append(p)
+
+        duplicates = {k: v for k, v in name_map.items() if len(v) > 1}
+
+        if not duplicates:
+            break
+
+        depth += 1
+
+    result = []
+    for name, ps in name_map.items():
+        for p in ps:
+            result.append((name, p))
+
+    result.sort(key=lambda x: x[0])
+
+    return result

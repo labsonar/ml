@@ -24,17 +24,13 @@ class VAEEncoder(ml_core.AudioPipeline):
         if ext == ".ts":
             self.model = torch.jit.load(model_path).to(self.device)
         elif ext == ".ckpt":
+            print("ckpt load: ", model_path)
             self.model = lps_audio_vae.CONV_VAE.load_from_checkpoint(model_path)
+            print("ckpt loaded")
         else:
             raise NotImplementedError(f"VAEEncoder not ready to load an {ext} file")
 
         self.model.eval()
-
-        if not hasattr(self.model, "encode"):
-            raise RuntimeError(
-                "Modelo não possui método encode(). "
-                "Use um modelo RAVE exportado corretamente."
-            )
 
         if not hasattr(self.model, "decode"):
             print("[WARNING] Model has no decode() method")
