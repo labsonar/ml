@@ -7,11 +7,15 @@ import os
 import random
 import datetime
 import shutil
+import typing
 
 import numpy as np
 
 import torch
 import contextlib
+
+import lps_utils.quantities as lps_qty
+import lps_sp.signal as lps_sig
 
 
 def set_seed():
@@ -69,3 +73,19 @@ def evaluating(model):
     finally:
         if was_training:
             model.train()
+
+def save_wav(data: np.ndarray | torch.Tensor,
+             fs: int | lps_qty.Frequency,
+             filename: str) -> None:
+    """Export a .wav file
+
+    Args:
+        signal (np.ndarray, torch.Tensor): Signal to be normalized and exported
+        fs (int, lps_qty.Frequency): Sample Frequency
+        filename (str): Filename
+    """
+
+    if isinstance(data, torch.Tensor):
+        data = data.detach().cpu().numpy()
+
+    lps_sig.save_wav(data, fs, filename)

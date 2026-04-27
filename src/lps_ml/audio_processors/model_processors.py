@@ -1,3 +1,4 @@
+import os
 import typing
 import torch
 import numpy as np
@@ -5,6 +6,7 @@ import numpy as np
 import lps_ml.utils.device as lps_device
 import lps_utils.quantities as lps_qty
 import lps_ml.core as ml_core
+import lps_ml.model.audio_vae as lps_audio_vae
 
 
 class VAEEncoder(ml_core.AudioPipeline):
@@ -17,7 +19,15 @@ class VAEEncoder(ml_core.AudioPipeline):
     ):
         super().__init__()
         self.device = device or lps_device.get_available_device()
-        self.model = torch.jit.load(model_path).to(self.device)
+
+        ext = os.path.splitext(model_path)[1]
+        if ext == ".ts":
+            self.model = torch.jit.load(model_path).to(self.device)
+        elif ext == ".ckpt":
+            self.model = lps_audio_vae.CONV_VAE.load_from_checkpoint(model_path)
+        else:
+            raise NotImplementedError(f"VAEEncoder not ready to load an {ext} file")
+
         self.model.eval()
 
         if not hasattr(self.model, "encode"):

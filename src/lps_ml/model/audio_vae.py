@@ -389,22 +389,29 @@ class CONV_VAE(lightning.LightningModule):
     def _kl_loss(mean, logvar):
         return -0.5 * torch.mean(1 + logvar - mean.pow(2) - logvar.exp())
 
-    def forward(self, x):
-        y, _, _ = self.detailed_forward(x)
+    def encode(self, x):
+        x_sub = self.pqmf(x)
+        mean, logvar = self.encoder(x_sub)
+        return mean, logvar
+
+    def decode(self, z):
+        y_cap = self.decoder(z)
+        y_sub = self.out_layer(y_cap)
+        y = self.pqmf.reverse(y_sub)
         return y
+
+    def forward(self, x):
+        z, _ = self.encode(x)
+        return self.decode(z)
 
     def detailed_forward(self, x):
         """
         x: (B, 1, T)
         """
-
-        x_sub = self.pqmf(x)
-        mean, logvar = self.encoder(x_sub)
+        mean, logvar = self.encode(x)
 
         z = CONV_VAE._reparameterize(mean, logvar)
-        y_cap = self.decoder(z)
-        y_sub = self.out_layer(y_cap)
-        y = self.pqmf.reverse(y_sub)
+        y = self.decode(z)
 
         return y, mean, logvar
 
