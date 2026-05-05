@@ -234,6 +234,52 @@ class CallbackTarget(Target):
                self.n_targets == other.n_targets and \
                self.include_others == other.include_others
 
+class CombinationTarget(Target):
+    """
+    Target generator based on unique combinations of one or more columns.
+    Each unique combination is mapped to an integer label.
+    """
+
+    def __init__(self, columns: typing.Union[str, typing.List[str]]):
+
+        if isinstance(columns, str):
+            columns = [columns]
+
+        self.columns = columns
+        self._mapping: typing.Dict[typing.Tuple, int] = {}
+        self._combinations: typing.List = []
+
+        super().__init__(n_targets=0, include_others=False)
+
+    def label(self, input_df: pd.DataFrame) -> pd.DataFrame:
+        df = input_df.copy()
+        self.update_mapping(df)
+        self.n_targets = len(self._mapping)
+
+        df[self.DEFAULT_TARGET_HEADER] = [
+            self._mapping.get(comb, None) for comb in self._combinations
+        ]
+
+        df = df.dropna(subset=[self.DEFAULT_TARGET_HEADER])
+        df[self.DEFAULT_TARGET_HEADER] = df[self.DEFAULT_TARGET_HEADER].astype(int)
+
+        return df
+
+    def update_mapping(self, input_df: pd.DataFrame):
+        """Return the combination → label mapping."""
+        if not self._mapping:
+            self._combinations = list(zip(*(input_df[col] for col in self.columns)))
+
+            unique_combinations = pd.unique(self._combinations)
+
+            self._mapping = {
+                comb: idx for idx, comb in enumerate(unique_combinations)
+            }
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, CombinationTarget) and \
+               self.columns == other.columns
+
 class Selector:
     """Class representing a filtered and labelled subset of data."""
 

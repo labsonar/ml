@@ -25,6 +25,9 @@ def _extract_latent_and_labels(loader):
 
     for x, y in loader:
 
+        if not all_data:
+            print("\tshape: ", x.shape)
+
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu().numpy()
 
@@ -103,7 +106,7 @@ def main():
         default=["SILHOUETTE", "DAVIES_BOULDIN"],
         choices=[m.name for m in ml_sep.Separability]
     )
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--output_dir", type=str, default="./result/latent_separability")
     args = parser.parse_args()
 
@@ -112,27 +115,23 @@ def main():
 
     metrics = [ml_sep.Separability[m].get() for m in args.metrics]
 
-    n_samples = int(2**17)
-    overlap = int(2**16)
-
     latent_results = {}
 
     compactness_dict = _parse_model_specs(args.models)
     models = compactness_dict.keys()
 
+    n_samples=int(2**17)    #8.192s
+    overlap=int(2**16)      #4.096s
+
     for name, model_path in ml_utils.shortest_relative_path(models):
-        print(f"Processing model: {model_path}")
-        print("compactness_dict: ", compactness_dict)
 
         try:
             latent_compactness = compactness_dict[model_path]
 
-            print("latent_compactness: ", latent_compactness)
-            print("n_samples: ", n_samples)
-            print("overlap: ", overlap)
-
             latent_dm = ml_db.Iemanja(
                     file_processor=ml_procs.SampleProcessor(
+                            # n_samples=1,
+                            # overlap=0,
                             n_samples=int(n_samples/latent_compactness),
                             overlap=int(overlap/latent_compactness),
                             pipelines=[
@@ -143,7 +142,9 @@ def main():
                     cv = ml_cv.FiveByTwo(),
                     simple_version=True,
                     batch_size=args.batch_size,
+                    num_workers=0
                     )
+            latent_dm.num_workers=0
             latent_dm.setup()
             latent_dict_loader = latent_dm.val_dataloader_dict()
 
@@ -155,6 +156,7 @@ def main():
 
             loader = latent_dm.val_dataloader()
 
+            print("model: ", name)
             data, labels = _extract_latent_and_labels(loader)
 
             aux_name = name.replace("/", "_")

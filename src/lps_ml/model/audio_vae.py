@@ -338,6 +338,12 @@ class CONV_VAE(lightning.LightningModule):
         demon_factor=0,
 
         lr=1e-4,
+
+        cls_factor: float = 0.0,
+        n_classes: int = 0,
+        cls_warmup_steps: int = 1000,
+
+        kl_warmup_steps: int = 1000,
     ):
         super().__init__()
 
@@ -359,6 +365,16 @@ class CONV_VAE(lightning.LightningModule):
             dilation=[1 + (2*i) for i in range(in_layers)],
         )
 
+        if cls_factor > 0 and n_classes > 1:
+
+            self.classifier = torch.nn.Sequential(
+                torch.nn.Linear(latent_dim, n_classes)
+            )
+
+            self.cls_loss_fn = torch.nn.CrossEntropyLoss()
+        else:
+            self.classifier = None
+
         self.decoder = ml_stack1d.ConvFeatureReconstructor(
             in_channels=latent_dim,
             adapt_channels=dec_channels[0],
@@ -367,17 +383,20 @@ class CONV_VAE(lightning.LightningModule):
         )
 
         self.out_layer = torch.nn.Conv1d(
-                    in_channels=dec_channels[-1],
-                    out_channels=n_bands,
-                    kernel_size=1
-                )
-
-        self.loss = ml_loss.SonarLoss(
-            stft_factor=stft_factor,
-            mel_factor=mel_factor,
-            lofar_factor=lofar_factor,
-            demon_factor=demon_factor,
+            in_channels=dec_channels[-1],
+            out_channels=n_bands,
+            kernel_size=1
         )
+
+        # self.loss = ml_loss.SonarLoss(
+        #     stft_factor=stft_factor,
+        #     mel_factor=mel_factor,
+        #     lofar_factor=lofar_factor,
+        #     demon_factor=demon_factor,
+        # )
+        self.loss = ml_loss.SonarLoss.defaul_stft_only()
+
+        self.n_steps = 0
 
     @staticmethod
     def _reparameterize(mean, logvar):
@@ -408,7 +427,7 @@ class CONV_VAE(lightning.LightningModule):
         z = self.encode(x)
         return self.decode(z)
 
-    def detailed_forward(self, x):
+    def trn_forward(self, x):
         """
         x: (B, 1, T)
         """
@@ -427,14 +446,33 @@ class CONV_VAE(lightning.LightningModule):
             batch: input batch (B, 1, T)
             stage: "train" | "val"
         """
-        x, _ = batch
+        x, y_cls = batch
 
-        y, mean, logvar = self.detailed_forward(x)
+        y, mean, logvar = self.trn_forward(x)
 
         recon = self.loss(x, y)
         kl = CONV_VAE._kl_loss(mean, logvar)
 
-        loss = recon + self.hparams.beta_kl * kl
+        kl_wu_factor = min(1.0, self.n_steps / self.hparams.kl_warmup_steps)
+        loss = recon + kl * (self.hparams.beta_kl * kl_wu_factor)
+        print("kl_factor: ", kl_wu_factor)
+
+        if self.classifier is not None:
+            z = mean
+            B, C, T = z.shape
+            z = z.permute(0, 2, 1).contiguous()
+            z = z.view(B * T, C)
+
+            y_rep = y_cls.unsqueeze(1).repeat(1, T).view(-1)
+
+            logits = self.classifier(z)
+            cls_loss = self.cls_loss_fn(logits, y_rep)
+
+            cls_wu_factor = min(1.0, self.n_steps / self.hparams.cls_warmup_steps)
+            loss += cls_loss * (self.hparams.cls_factor * cls_wu_factor)
+            print("cls_wu_factor: ", cls_wu_factor)
+
+            self.log(f"{stage}/cls", cls_loss, on_epoch=True)
 
         self.log(f"{stage}/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         self.log(f"{stage}/recon", recon, on_epoch=True)
@@ -443,6 +481,8 @@ class CONV_VAE(lightning.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
+        if batch_idx == 0:
+            self.n_steps += 1
         return self.shared_step(batch, "train")
 
     def validation_step(self, batch, batch_idx):

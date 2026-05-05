@@ -13,6 +13,7 @@ import lps_ml.datasets as ml_db
 import lps_ml.core.cv as ml_cv
 import lps_ml.audio_processors as ml_procs
 import lps_ml.model.audio_vae as lps_audio_vae
+import lps_ml.datasets.selection as ml_sel
 
 def _main():
     parser = argparse.ArgumentParser(
@@ -47,6 +48,10 @@ def _main():
 
     parser.add_argument("--num_workers", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--kl_warmup_steps", type=int, default=1)
+
+    parser.add_argument("--cls_warmup_steps", type=int, default=1)
+    parser.add_argument("--cls_factor", type=float, default=1e-3)
 
     parser.add_argument("--max_epochs", type=int, default=10000)
     parser.add_argument("--check_val_every_n_epoch", type=int, default=1)
@@ -78,7 +83,11 @@ def _main():
             simple_version=True,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            selection=ml_sel.Selector(
+                # target=ml_sel.CombinationTarget(["SCENARIO_CATALOG_ID", "CLASS"])
+                target=ml_sel.CombinationTarget(["CLASS"])
             )
+        )
 
     if args.pretrained_ckpt is not None:
         model = lps_audio_vae.CONV_VAE.load_from_checkpoint(
@@ -89,6 +98,10 @@ def _main():
             lofar_factor=args.lofar_factor,
             demon_factor=args.demon_factor,
             lr=args.lr,
+            kl_warmup_steps=args.kl_warmup_steps,
+            cls_warmup_steps=args.cls_warmup_steps,
+            cls_factor=args.cls_factor,
+            n_classes=dm.get_n_targets(),
         )
     else:
         model = lps_audio_vae.CONV_VAE(
@@ -103,6 +116,10 @@ def _main():
             lofar_factor=args.lofar_factor,
             demon_factor=args.demon_factor,
             lr=args.lr,
+            kl_warmup_steps=args.kl_warmup_steps,
+            cls_warmup_steps=args.cls_warmup_steps,
+            cls_factor=args.cls_factor,
+            n_classes=dm.get_n_targets(),
         )
 
     trainer = lps_light.default_trainer(

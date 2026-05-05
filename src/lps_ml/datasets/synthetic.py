@@ -114,10 +114,11 @@ class Iemanja(ml_core.AudioDataModule):
             simple_selector = Iemanja.simple_selector()
             df = simple_selector.apply(df)
 
+        df["ID"] = df["CATALOG_ID"]
+
         if selection is not None:
             df = selection.apply(df)
 
-        df["ID"] = df["CATALOG_ID"]
         if "Target" not in df.columns:
             df["Target"] = (df["CLASS"] == "Cargo").astype(int)
 

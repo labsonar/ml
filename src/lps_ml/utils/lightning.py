@@ -119,7 +119,7 @@ def default_callbacks(output_dir: str,
     checkpoint_cb = default_checkpoint(output_dir)
 
     return [
-        default_early_stop(patience=patience, min_delta=min_delta),
+        # default_early_stop(patience=patience, min_delta=min_delta),
         checkpoint_cb,
         PlotMetrics(output_dir=output_dir),
     ]

@@ -133,11 +133,17 @@ class STFT(AudioProcessor):
         self.stft_config = stft_config
 
     def process(self, x):
+        window = torch.hann_window(
+            self.stft_config.n_fft,
+            device=x.device
+        )
+
         ret = torch.stft(
             x.squeeze(1),
             n_fft=self.stft_config.n_fft,
             hop_length=self.stft_config.hop_length,
             win_length=self.stft_config.n_fft,
+            window=window,
             return_complex=True
         )
 
@@ -530,3 +536,21 @@ class SonarLoss:
         if self.demon_factor:
             self.demon_loss.plot(inputs=inputs,
                                 output_path=os.path.join(output_dir, "demon_loss.png"))
+
+    @staticmethod
+    def defaul_stft_only() -> "SonarLoss":
+
+        stft_loss = MultiResolutionLoss[STFT]([
+            STFTConfig(512, 256),
+            STFTConfig(1024, 512),
+            STFTConfig(2048, 1024),
+            STFTConfig(4096, 2048),
+        ])
+
+        return SonarLoss(
+            stft_factor=1.0,
+            mel_factor=0.0,
+            lofar_factor=0.0,
+            demon_factor=0.0,
+            stft_loss=stft_loss
+        )
