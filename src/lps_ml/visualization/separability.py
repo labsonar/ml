@@ -4,6 +4,7 @@ import typing
 import numpy as np
 
 import sklearn.metrics as sk_metrics
+import sklearn.neighbors as sk_neighbors
 
 import torch
 import torch.utils.data as torch_data
@@ -112,9 +113,31 @@ class DaviesBouldinIndex(SeparabilityMetric):
     def compute(self, x: np.ndarray, labels: np.ndarray) -> float:
         return float(sk_metrics.davies_bouldin_score(x, labels))
 
+class KNNConsistency(SeparabilityMetric):
+
+    def __init__(self, k: int = 5, metric: str = "euclidean"):
+        self.k = k
+        self.metric = metric
+
+    def compute(self, x: np.ndarray, labels: np.ndarray) -> float:
+
+        nn = sk_neighbors.NearestNeighbors(n_neighbors=self.k + 1, metric=self.metric)
+        nn.fit(x)
+
+        distances, indices = nn.kneighbors(x)
+
+        neighbor_indices = indices[:, 1:]
+        neighbor_labels = labels[neighbor_indices]
+
+        matches = (neighbor_labels == labels[:, None])
+        consistency_per_sample = matches.mean(axis=1)
+
+        return float(consistency_per_sample.mean())
+
 class Separability(enum.Enum):
     SILHOUETTE = SilhouetteScore
     DAVIES_BOULDIN = DaviesBouldinIndex
+    KNN = KNNConsistency
 
     def get(self) -> SeparabilityMetric:
         return self.value()

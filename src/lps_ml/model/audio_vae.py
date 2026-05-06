@@ -455,7 +455,7 @@ class CONV_VAE(lightning.LightningModule):
 
         kl_wu_factor = min(1.0, self.n_steps / self.hparams.kl_warmup_steps)
         loss = recon + kl * (self.hparams.beta_kl * kl_wu_factor)
-        print("kl_factor: ", kl_wu_factor)
+        # print("kl_factor: ", kl_wu_factor)
 
         if self.classifier is not None:
             z = mean
@@ -470,7 +470,7 @@ class CONV_VAE(lightning.LightningModule):
 
             cls_wu_factor = min(1.0, self.n_steps / self.hparams.cls_warmup_steps)
             loss += cls_loss * (self.hparams.cls_factor * cls_wu_factor)
-            print("cls_wu_factor: ", cls_wu_factor)
+            # print("cls_wu_factor: ", cls_wu_factor)
 
             self.log(f"{stage}/cls", cls_loss, on_epoch=True)
 

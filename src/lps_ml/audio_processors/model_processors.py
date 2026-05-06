@@ -19,6 +19,7 @@ class VAEEncoder(ml_core.AudioPipeline):
     ):
         super().__init__()
         self.device = device or lps_device.get_available_device()
+        self.model_path = model_path
 
         ext = os.path.splitext(model_path)[1]
         if ext == ".ts":
@@ -69,3 +70,9 @@ class VAEEncoder(ml_core.AudioPipeline):
         z = z.detach().cpu().numpy()
         z = np.squeeze(z, axis=0)
         return fs, z
+
+    def _get_params(self):
+        return {
+            "Pipeline": "VAEEncoder",
+            "model_path": self.model_path,
+        }

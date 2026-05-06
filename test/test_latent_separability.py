@@ -14,7 +14,7 @@ import lps_utils.quantities as lps_qty
 import lps_ml.datasets as ml_db
 import lps_ml.audio_processors as ml_procs
 import lps_ml.core.cv as ml_cv
-import lps_ml.utils.separability as ml_sep
+import lps_ml.visualization.separability as ml_sep
 import lps_ml.utils.general as ml_utils
 import lps_ml.visualization.tsne as ml_vis
 
@@ -103,7 +103,7 @@ def main():
     parser.add_argument(
         "--metrics",
         nargs="+",
-        default=["SILHOUETTE", "DAVIES_BOULDIN"],
+        default=["KNN"],
         choices=[m.name for m in ml_sep.Separability]
     )
     parser.add_argument("--batch_size", type=int, default=8)
@@ -154,21 +154,21 @@ def main():
                 metrics
             )
 
-            loader = latent_dm.val_dataloader()
+            # loader = latent_dm.val_dataloader()
 
-            print("model: ", name)
-            data, labels = _extract_latent_and_labels(loader)
+            # print("model: ", name)
+            # data, labels = _extract_latent_and_labels(loader)
 
-            aux_name = name.replace("/", "_")
-            filename = os.path.join(output_dir, f"tsne_{aux_name}.png")
+            # aux_name = name.replace("/", "_")
+            # filename = os.path.join(output_dir, f"tsne_{aux_name}.png")
 
-            ml_vis.export_tsne(
-                data=data,
-                labels=labels,
-                filename=filename
-            )
+            # ml_vis.export_tsne(
+            #     data=data,
+            #     labels=labels,
+            #     filename=filename
+            # )
 
-            print(f"Saved t-SNE: {filename}")
+            # print(f"Saved t-SNE: {filename}")
 
         except Exception as e:
             print(f"Error processing {model_path}: {e}")

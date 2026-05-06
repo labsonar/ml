@@ -1,11 +1,15 @@
 import os
 import typing
+import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
 import lightning
 import lightning.pytorch.callbacks as lightning_call
 
+import lps_utils.quantities as lps_qty
+import lps_ml.utils.general as ml_utils
+import lps_sp.signal as lps_sig
 
 class PlotMetrics(lightning.Callback):
     """
@@ -90,6 +94,74 @@ class PlotMetrics(lightning.Callback):
             plt.savefig(os.path.join(self.output_dir, f"{m}_curve.png"))
             plt.close()
 
+class SaveAudioSamples(lightning.Callback):
+
+    def __init__(
+        self,
+        output_dir: str,
+        n_samples: int = 5,
+        sample_rate: lps_qty.Frequency = lps_qty.Frequency.khz(16),
+    ):
+        super().__init__()
+        self.output_dir = os.path.join(output_dir, "audio_samples")
+        self.n_samples = n_samples
+        self.sample_rate = sample_rate
+
+    def on_fit_end(self, trainer, pl_module):
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        pl_module.eval()
+
+        dataloader = trainer.val_dataloaders
+        if isinstance(dataloader, list):
+            dataloader = dataloader[0]
+
+        saved = 0
+
+        device = pl_module.device
+
+        with torch.no_grad():
+
+            for batch in dataloader:
+
+                if isinstance(batch, (list, tuple)):
+                    x = batch[0]
+                else:
+                    x = batch
+
+                x = x.to(device)
+                out = pl_module(x)
+
+                print("x[", type(x), "]: ", x.shape)
+                print("out[", type(out), "]: ", out.shape)
+
+                for i in range(x.shape[0]):
+                    if saved >= self.n_samples:
+                        return
+
+                    original = x[i].detach().cpu().numpy()
+                    recon = out[i].detach().cpu().numpy()
+
+                    if original.ndim == 1:
+                        original = np.expand_dims(original, axis=0)
+
+                    if recon.ndim == 1:
+                        recon = np.expand_dims(recon, axis=0)
+
+                    lps_sig.save_convert_wav(
+                        filename=os.path.join(self.output_dir, f"sample_{saved}_original.wav"),
+                        signal=original,
+                        fs=self.sample_rate,
+                    )
+
+                    lps_sig.save_convert_wav(
+                        filename=os.path.join(self.output_dir, f"sample_{saved}_recon.wav"),
+                        signal=recon,
+                        fs=self.sample_rate,
+                    )
+
+                    saved += 1
+
 def default_early_stop(patience : int = 100, min_delta: float = 0.001) -> lightning_call.Callback:
     """ Early stopping callback to monitor the "value/loss" metric. """
     return lightning_call.EarlyStopping(
@@ -113,7 +185,8 @@ def default_checkpoint(output_dir: str) -> lightning_call.ModelCheckpoint:
 
 def default_callbacks(output_dir: str,
                       patience : int = 100,
-                      min_delta: float = 0.001) -> typing.List[lightning_call.Callback]:
+                      min_delta: float = 0.001,
+                      n_audio_samples: int = 5) -> typing.List[lightning_call.Callback]:
     """ Default training callbacks. """
 
     checkpoint_cb = default_checkpoint(output_dir)
@@ -122,17 +195,22 @@ def default_callbacks(output_dir: str,
         # default_early_stop(patience=patience, min_delta=min_delta),
         checkpoint_cb,
         PlotMetrics(output_dir=output_dir),
+        SaveAudioSamples(
+            output_dir=output_dir,
+            n_samples=n_audio_samples,
+        ),
     ]
 
 def default_trainer(output_dir: str,
                     max_epochs : int = 10000,
                     check_val_every_n_epoch=1,
                     patience : int = 100,
-                    min_delta: float = 0.001) -> lightning.Trainer:
+                    min_delta: float = 0.001,
+                    n_audio_samples: int = 5) -> lightning.Trainer:
     """ Default trainer with common callbacks. """
     return lightning.Trainer(
         max_epochs=max_epochs,
         accelerator="auto",
-        callbacks=default_callbacks(output_dir, patience, min_delta),
+        callbacks=default_callbacks(output_dir, patience, min_delta, n_audio_samples),
         check_val_every_n_epoch=check_val_every_n_epoch
     )

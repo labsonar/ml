@@ -12,7 +12,7 @@ import lps_utils.quantities as lps_qty
 import lps_ml.datasets as ml_db
 import lps_ml.audio_processors as ml_procs
 import lps_ml.core.cv as ml_cv
-import lps_ml.utils.separability as ml_sep
+import lps_ml.visualization.separability as ml_sep
 
 
 
