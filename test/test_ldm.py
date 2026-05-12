@@ -177,6 +177,7 @@ def _main():
     parser.add_argument("--model", type=str, default="/data/models/v0_6M.ts")
     parser.add_argument("--batch-size", type=int, default=16,
                         help="Batch size for training.")
+    parser.add_argument("--latent_compactness", type=int, default=1024, help="Compression of VAE.")
     parser.add_argument("--ldm-steps", type=int, default=300, help="Denoising steps for LDM.")
     parser.add_argument("--max-epochs", type=int, default=1000,
                         help="Maximum number of training epochs.")
@@ -192,14 +193,13 @@ def _main():
 
     n_samples=int(2**17)    #8.192s
     overlap=int(2**16)      #4.096s
-    latent_compactness = int(2**10)
 
     vae_encoder = ml_procs.VAEEncoder(args.model)
 
     dm = ml_db.IemanjaPaired(
             file_processor=ml_procs.SampleProcessor(
-                    n_samples=int(n_samples/latent_compactness),
-                    overlap=int(overlap/latent_compactness),
+                    n_samples=int(n_samples/args.latent_compactness),
+                    overlap=int(overlap/args.latent_compactness),
                     pipelines=[
                         ml_procs.ToFloatConverter(),
                         vae_encoder

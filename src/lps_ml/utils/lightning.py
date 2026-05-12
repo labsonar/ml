@@ -8,8 +8,9 @@ import lightning
 import lightning.pytorch.callbacks as lightning_call
 
 import lps_utils.quantities as lps_qty
-import lps_ml.utils.general as ml_utils
 import lps_sp.signal as lps_sig
+import lps_ml.utils.sonar_loss as ml_loss
+
 
 class PlotMetrics(lightning.Callback):
     """
@@ -120,6 +121,33 @@ class SaveAudioSamples(lightning.Callback):
 
         device = pl_module.device
 
+        stft_loss = ml_loss.MultiResolutionLoss[ml_loss.STFT]([
+            ml_loss.STFTConfig(4096, 2048),
+        ])
+
+        mel_loss = ml_loss.MultiResolutionLoss[ml_loss.Mel]([
+            ml_loss.MelConfig(4096, 2048, n_mels=512),
+        ])
+
+        lofar_loss = ml_loss.MultiResolutionLoss[ml_loss.Lofar]([
+            ml_loss.LofarConfig(4096, 2048),
+        ])
+
+        demon_loss = ml_loss.MultiResolutionLoss[ml_loss.Demon]([
+            ml_loss.DemonConfig(1024, 512, decimate=[16, 8]),
+        ])
+
+        loss = ml_loss.SonarLoss(
+            stft_factor=1.0,
+            mel_factor=1.0,
+            lofar_factor=1.0,
+            demon_factor=1.0,
+            stft_loss=stft_loss,
+            mel_loss=mel_loss,
+            lofar_loss=lofar_loss,
+            demon_loss=demon_loss
+        )
+
         with torch.no_grad():
 
             for batch in dataloader:
@@ -132,15 +160,20 @@ class SaveAudioSamples(lightning.Callback):
                 x = x.to(device)
                 out = pl_module(x)
 
-                print("x[", type(x), "]: ", x.shape)
-                print("out[", type(out), "]: ", out.shape)
-
                 for i in range(x.shape[0]):
                     if saved >= self.n_samples:
                         return
 
-                    original = x[i].detach().cpu().numpy()
-                    recon = out[i].detach().cpu().numpy()
+                    output_dir = os.path.join(self.output_dir, str(saved))
+                    os.makedirs(output_dir, exist_ok=True)
+
+                    original = x[i].detach().cpu()
+                    recon = out[i].detach().cpu()
+
+                    loss.plot([original, recon], output_dir=output_dir)
+
+                    original = original.numpy()
+                    recon = recon.numpy()
 
                     if original.ndim == 1:
                         original = np.expand_dims(original, axis=0)
@@ -149,13 +182,13 @@ class SaveAudioSamples(lightning.Callback):
                         recon = np.expand_dims(recon, axis=0)
 
                     lps_sig.save_convert_wav(
-                        filename=os.path.join(self.output_dir, f"sample_{saved}_original.wav"),
+                        filename=os.path.join(output_dir, f"sample_{saved}_original.wav"),
                         signal=original,
                         fs=self.sample_rate,
                     )
 
                     lps_sig.save_convert_wav(
-                        filename=os.path.join(self.output_dir, f"sample_{saved}_recon.wav"),
+                        filename=os.path.join(output_dir, f"sample_{saved}_recon.wav"),
                         signal=recon,
                         fs=self.sample_rate,
                     )

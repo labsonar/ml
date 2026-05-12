@@ -74,20 +74,28 @@ def _save_metric_heatmaps(df, output_dir):
         plt.savefig(filename, dpi=300)
         plt.close()
 
-def _parse_model_specs(model_specs: list[str]) -> typing.Dict[str, int]:
+def _parse_model_specs(model_specs: list[str], default_compactness: int) -> typing.Dict[str, int]:
     model_specs = [os.path.abspath(p) for p in model_specs]
 
     parsed = {}
 
     for spec in model_specs:
-        try:
-            path, comp = spec.split(":")
-            parsed[path] = int(comp)
+        if ":" in spec:
+            try:
+                path, comp = spec.rsplit(":", 1)
+                compactness = int(comp)
 
-        except ValueError:
-            raise ValueError(
-                f"Invalid model specification '{spec}'. Use format model_path:latent_compactness"
-            )
+            except ValueError:
+                raise ValueError(
+                    f"Invalid compactness value in '{spec}'. "
+                    f"Use format model_path:latent_compactness"
+                )
+
+        else:
+            path = spec
+            compactness = default_compactness
+
+        parsed[os.path.abspath(path)] = compactness
 
     return parsed
 
@@ -100,6 +108,7 @@ def main():
         required=True,
         help="List of model_path:latent_compactness"
     )
+    parser.add_argument("--default_compactness", type=int, default=1024)
     parser.add_argument(
         "--metrics",
         nargs="+",
@@ -117,7 +126,7 @@ def main():
 
     latent_results = {}
 
-    compactness_dict = _parse_model_specs(args.models)
+    compactness_dict = _parse_model_specs(args.models, args.default_compactness)
     models = compactness_dict.keys()
 
     n_samples=int(2**17)    #8.192s
@@ -154,21 +163,21 @@ def main():
                 metrics
             )
 
-            # loader = latent_dm.val_dataloader()
+            loader = latent_dm.val_dataloader()
 
-            # print("model: ", name)
-            # data, labels = _extract_latent_and_labels(loader)
+            print("model: ", name)
+            data, labels = _extract_latent_and_labels(loader)
 
-            # aux_name = name.replace("/", "_")
-            # filename = os.path.join(output_dir, f"tsne_{aux_name}.png")
+            aux_name = name.replace("/", "_")
+            filename = os.path.join(output_dir, f"tsne_{aux_name}.png")
 
-            # ml_vis.export_tsne(
-            #     data=data,
-            #     labels=labels,
-            #     filename=filename
-            # )
+            ml_vis.export_tsne(
+                data=data,
+                labels=labels,
+                filename=filename
+            )
 
-            # print(f"Saved t-SNE: {filename}")
+            print(f"Saved t-SNE: {filename}")
 
         except Exception as e:
             print(f"Error processing {model_path}: {e}")

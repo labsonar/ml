@@ -19,9 +19,9 @@ def _main():
     parser = argparse.ArgumentParser(
         description="Test AudioFolder dataset"
     )
-    parser.add_argument("--capacity", type=int, default=16)
+    parser.add_argument("--capacity", type=int, default=32)
     parser.add_argument("--pqmf_bands", type=int, default=8)
-    parser.add_argument("--latent_dim", type=int, default=64)
+    parser.add_argument("--latent_dim", type=int, default=128)
     parser.add_argument("--ratios",
                         type=int,
                         nargs='+',
