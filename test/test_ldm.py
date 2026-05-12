@@ -206,7 +206,8 @@ def _main():
                     ]
                 ),
             cv = ml_cv.SimpleSplitCV(),
-            simple_version=True,
+            dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
+            channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
             batch_size=args.batch_size
             )
     dm.setup()

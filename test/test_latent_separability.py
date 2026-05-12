@@ -149,7 +149,8 @@ def main():
                             ]
                         ),
                     cv = ml_cv.FiveByTwo(),
-                    simple_version=True,
+                    dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
+                    channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
                     batch_size=args.batch_size,
                     num_workers=0
                     )

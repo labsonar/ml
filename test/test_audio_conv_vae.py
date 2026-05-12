@@ -80,7 +80,8 @@ def _main():
                     pipelines=[ml_procs.ToFloatConverter()]
                 ),
             cv = ml_cv.SimpleSplitCV(),
-            simple_version=True,
+            dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
+            channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             selection=ml_sel.Selector(

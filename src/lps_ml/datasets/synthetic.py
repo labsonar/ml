@@ -1,6 +1,7 @@
 """
 Synthetic Data Module
 """
+import enum
 import os
 import typing
 import pandas as pd
@@ -11,6 +12,18 @@ import lps_ml.core.loader as ml_loader
 import lps_ml.core.processor as ml_proc
 import lps_ml.core as ml_core
 import lps_ml.datasets.selection as ml_sel
+
+
+class DynamicSelection(enum.Enum):
+    ALL = enum.auto()
+    FIXED_ONLY = enum.auto()
+    MOBILE_ONLY = enum.auto()
+
+
+class ChannelSelection(enum.Enum):
+    ALL = enum.auto()
+    REFERENCE_ONLY = enum.auto()
+    NON_REFERENCE_ONLY = enum.auto()
 
 class Iemanja(ml_core.AudioDataModule):
     """
@@ -31,8 +44,6 @@ class Iemanja(ml_core.AudioDataModule):
     @staticmethod
     def loader(data_base_dir: str) -> ml_core.AudioFileLoader:
         """ Get AudioFileLoader for Synthetical dataset. """
-        import os
-
         return ml_core.AudioFileLoader(
             data_base_dir=data_base_dir,
             extract_id=lambda rel_path: int(
@@ -74,31 +85,81 @@ class Iemanja(ml_core.AudioDataModule):
         df_ship = df_ship.rename(columns={"CATALOG_ID": "SHIP_CATALOG_ID"})
         df_db = df_db.merge(df_ship, on="SHIP_CATALOG_ID", how="left")
 
+        df_db["ID"] = df_db["CATALOG_ID"]
         return df_db
 
     @staticmethod
-    def simple_selector() -> ml_sel.Selector:
-        return ml_sel.Selector(
-            target=ml_sel.CallbackTarget(
-                n_targets=2,
-                function=lambda row: 1 if row["CLASS"] == "Cargo" else 0
-            ),
-            filters=[
-                ml_sel.ConstraintFilter(
-                    constraints={"header": "DYNAMIC_TYPE", "value": ["fixed_distance"]},
-                    remove_elements_in=False
-                ),
-                ml_sel.CallbackFilter(
-                    lambda row: (row["CATALOG_ID"] % 4) < 2
-                )
-            ]
+    def build_dynamic_filter(selection: DynamicSelection) -> typing.Optional[ml_sel.Filter]:
+
+        if selection == DynamicSelection.ALL:
+            return None
+        elif selection == DynamicSelection.FIXED_ONLY:
+            remove_elements_in = False
+        elif selection == DynamicSelection.MOBILE_ONLY:
+            remove_elements_in = True
+        else:
+            raise ValueError(
+                f"Unsupported dynamic selection: {selection}"
+            )
+
+        return ml_sel.ConstraintFilter(
+            constraints={
+                "header": "DYNAMIC_TYPE",
+                "value": ["fixed_distance"]
+            },
+            remove_elements_in = remove_elements_in
+        )
+
+    @staticmethod
+    def build_channel_filter(selection: ChannelSelection) -> typing.Optional[ml_sel.Filter]:
+
+        if selection == ChannelSelection.ALL:
+            return None
+
+        if selection == ChannelSelection.REFERENCE_ONLY:
+            return ml_sel.CallbackFilter(
+                lambda row: (row["CATALOG_ID"] % 4) < 2
+            )
+
+        if selection == ChannelSelection.NON_REFERENCE_ONLY:
+            return ml_sel.CallbackFilter(
+                lambda row: (row["CATALOG_ID"] % 4) >= 2
+            )
+
+        raise ValueError(
+            f"Unsupported channel selection: {selection}"
+        )
+
+    @staticmethod
+    def build_selector(
+        dynamic_selection: DynamicSelection = DynamicSelection.ALL,
+        channel_selection: ChannelSelection = ChannelSelection.ALL,
+    ) -> ml_sel.MultiFilter:
+
+        filters = []
+
+        dynamic_filter = Iemanja.build_dynamic_filter(dynamic_selection)
+
+        if dynamic_filter is not None:
+            filters.append(dynamic_filter)
+
+        channel_filter = Iemanja.build_channel_filter(channel_selection)
+
+        if channel_filter is not None:
+            filters.append(channel_filter)
+
+        return ml_sel.MultiFilter(
+            filters=filters
         )
 
     def __init__(self,
                  file_processor: ml_core.AudioProcessor,
                  processed_dir: str = "/data/Processed_data/iemanja",
                  dataset_dir: str = "/data/iemanja",
-                 simple_version : bool = False,
+
+                 dynamic_selection: DynamicSelection = DynamicSelection.ALL,
+                 channel_selection: ChannelSelection = ChannelSelection.ALL,
+
                  batch_size: int = 32,
                  cv: ml_core.CrossValidator = None,
                  selection: ml_sel.Selector = None,
@@ -110,18 +171,22 @@ class Iemanja(ml_core.AudioDataModule):
 
         df = Iemanja.load_df(dataset_dir)
 
-        if simple_version:
-            simple_selector = Iemanja.simple_selector()
-            df = simple_selector.apply(df)
+        base_selector = Iemanja.build_selector(
+            dynamic_selection=dynamic_selection,
+            channel_selection=channel_selection
+        )
 
-        df["ID"] = df["CATALOG_ID"]
+        df = base_selector.apply(df)
 
-        if selection is not None:
-            df = selection.apply(df)
+        if selection is None:
+            selection = ml_sel.Selector(ml_sel.LabelTarget(
+                    column="CLASS",
+                    values=["Service","Cargo"],
+                    include_others=False
+                )
+            )
 
-        if "Target" not in df.columns:
-            df["Target"] = (df["CLASS"] == "Cargo").astype(int)
-
+        df = selection.apply(df)
 
         super().__init__(
             file_loader=file_loader,

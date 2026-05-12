@@ -222,7 +222,8 @@ def _main():
     #                 pipelines=[ml_procs.ToFloatConverter()]
     #             ),
     #         cv = ml_cv.FiveByTwo(),
-    #         simple_version=True,
+    #         dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
+    #         channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
     #         batch_size=16,
     #         num_workers=1
     #         )

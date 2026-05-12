@@ -74,7 +74,8 @@ def _main():
                     pipelines=ml_procs.CPADetector(duration, duration * 60)
                 ),
             cv = ml_cv.FiveByTwo(),
-            simple_version=True,
+            dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
+            channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
             batch_size=16
             )
 

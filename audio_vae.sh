@@ -25,5 +25,5 @@
 # python test/test_ldm.py --model /data/models/v0_95.ts --ldm-steps 900 --output-dir ./result/ldm_v0_95/900
 # python test/test_ldm.py --model /data/models/v0_95.ts --ldm-steps 1000 --output-dir ./result/ldm_v0_95/1000
 
-python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 300 --output-dir ./result/ldm_c0_95/300
+# python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 300 --output-dir ./result/ldm_c0_95/300
 # python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 500 --output-dir ./result/ldm_c0_95/500

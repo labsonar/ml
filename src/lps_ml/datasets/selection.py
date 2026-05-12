@@ -103,6 +103,18 @@ class CallbackFilter(Filter):
         mask = input_df.apply(self.function, axis=1)
         return input_df.loc[mask]
 
+class MultiFilter(Filter):
+    """Composer of Filters."""
+
+    def __init__(self, filters: typing.Union[typing.List[Filter], Filter]):
+        self.filters = filters if isinstance(filters, list) else [filters]
+
+    def apply(self, input_df: pd.DataFrame) -> pd.DataFrame:
+        df = input_df
+        for f in self.filters:
+            df = f.apply(df)
+        return df
+
 class Target(abc.ABC):
     """Abstract base class to generate labelled dataframes."""
 
