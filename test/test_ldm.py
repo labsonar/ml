@@ -184,7 +184,30 @@ def _main():
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Learning rate.")
     parser.add_argument("--output-dir", type=str, default="./result/ldm")
+    parser.add_argument(
+        "--dynamic_selection",
+        type=str,
+        default=ml_db.DynamicSelection.FIXED_ONLY.name,
+        choices=[e.name for e in ml_db.DynamicSelection],
+        help=(
+            "Dynamic selection mode. "
+            f"Options: {[e.name for e in ml_db.DynamicSelection]}"
+        )
+    )
+    parser.add_argument(
+        "--channel_selection",
+        type=str,
+        default=ml_db.ChannelSelection.REFERENCE_ONLY.name,
+        choices=[e.name for e in ml_db.ChannelSelection],
+        help=(
+            "Channel selection mode. "
+            f"Options: {[e.name for e in ml_db.ChannelSelection]}"
+        )
+    )
     args = parser.parse_args()
+
+    dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
+    channel_selection = ml_db.ChannelSelection[args.channel_selection]
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -206,8 +229,8 @@ def _main():
                     ]
                 ),
             cv = ml_cv.SimpleSplitCV(),
-            dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
-            channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
+            dynamic_selection=dynamic_selection,
+            channel_selection=channel_selection,
             batch_size=args.batch_size
             )
     dm.setup()

@@ -188,6 +188,8 @@ class Iemanja(ml_core.AudioDataModule):
 
         df = selection.apply(df)
 
+        self.dynamic_selection = dynamic_selection
+        self.channel_selection = channel_selection
         super().__init__(
             file_loader=file_loader,
             file_processor=file_processor,
@@ -199,6 +201,13 @@ class Iemanja(ml_core.AudioDataModule):
             transform=None,
         )
 
+    def _get_params(self):
+        return {
+            "file_loader": self.file_loader.__get_hash_base__(),
+            "file_processor": self.file_processor.__get_hash_base__(),
+            "dynamic_selection": self.dynamic_selection.name,
+            "channel_selection": self.channel_selection.name,
+        }
 @ml_core.PairedAudioDataModule.register_pair_builder(Iemanja)
 def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
     """

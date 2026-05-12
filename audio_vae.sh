@@ -27,3 +27,11 @@
 
 # python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 300 --output-dir ./result/ldm_c0_95/300
 # python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 500 --output-dir ./result/ldm_c0_95/500
+
+# # python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 500 --output-dir ./result/ldm_c0_95/500_fixed --dynamic_selection FIXED_ONLY
+# python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 500 --output-dir ./result/ldm_c0_95/500_mobile --dynamic_selection MOBILE_ONLY
+# python test/test_ldm.py --model /data/models/c0_95.ts --ldm-steps 500 --output-dir ./result/ldm_c0_95/500_all --dynamic_selection ALL
+
+
+python test/test_latent_separability.py --model /data/models/c0_95.ts --output_dir ./result/latent_separability/mobile --dynamic_selection MOBILE_ONLY
+python test/test_latent_separability.py --model /data/models/c0_95.ts --output_dir ./result/latent_separability/all --dynamic_selection ALL

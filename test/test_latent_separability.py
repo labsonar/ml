@@ -115,6 +115,26 @@ def main():
         default=["KNN"],
         choices=[m.name for m in ml_sep.Separability]
     )
+    parser.add_argument(
+        "--dynamic_selection",
+        type=str,
+        default=ml_db.DynamicSelection.FIXED_ONLY.name,
+        choices=[e.name for e in ml_db.DynamicSelection],
+        help=(
+            "Dynamic selection mode. "
+            f"Options: {[e.name for e in ml_db.DynamicSelection]}"
+        )
+    )
+    parser.add_argument(
+        "--channel_selection",
+        type=str,
+        default=ml_db.ChannelSelection.REFERENCE_ONLY.name,
+        choices=[e.name for e in ml_db.ChannelSelection],
+        help=(
+            "Channel selection mode. "
+            f"Options: {[e.name for e in ml_db.ChannelSelection]}"
+        )
+    )
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--output_dir", type=str, default="./result/latent_separability")
     args = parser.parse_args()
@@ -123,6 +143,9 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     metrics = [ml_sep.Separability[m].get() for m in args.metrics]
+
+    dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
+    channel_selection = ml_db.ChannelSelection[args.channel_selection]
 
     latent_results = {}
 
@@ -149,8 +172,8 @@ def main():
                             ]
                         ),
                     cv = ml_cv.FiveByTwo(),
-                    dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
-                    channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
+                    dynamic_selection=dynamic_selection,
+                    channel_selection=channel_selection,
                     batch_size=args.batch_size,
                     num_workers=0
                     )
