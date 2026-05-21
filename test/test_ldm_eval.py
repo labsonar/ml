@@ -6,6 +6,7 @@ import os
 import argparse
 import numpy as np
 import scipy.linalg as sci_alg
+import scipy.spatial.distance as sci_dist
 
 import torch
 
@@ -16,6 +17,8 @@ import lps_ml.utils.general as ml_utils
 import lps_ml.utils.device as ml_device
 import lps_ml.model as ml_model
 import lps_ml.visualization.tsne as ml_vis
+import lps_sp.acoustical.broadband as lps_bb
+import lps_utils.quantities as lps_qty
 
 # def cosine_similarity(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 #     """
@@ -117,6 +120,7 @@ def main():
 
     n_samples = int(2**17)
     overlap = int(2**16)
+    fs = lps_qty.Frequency.khz(16)
 
     vae_encoder = ml_procs.VAEEncoder(args.vae_model)
 
@@ -148,6 +152,7 @@ def main():
 
     rdi_as = []
     rdi_bs = []
+    ms = []
 
     with torch.no_grad():
 
@@ -161,11 +166,36 @@ def main():
 
             x_generated = model.sample(cond=x_cond)
 
+            t_cond = vae_encoder.decode(x_cond)
+            t_target = vae_encoder.decode(x_target)
+            t_generated = vae_encoder.decode(x_generated)
+
+            # print("t_cond: ", t_cond.shape)
+            # print("t_target: ", t_target.shape)
+            # print("t_generated: ", t_generated.shape)
+
             for i in range(x_cond.shape[0]):
 
                 cond_points = x_cond[i].detach().cpu().numpy().T
                 target_points = x_target[i].detach().cpu().numpy().T
                 generated_points = x_generated[i].detach().cpu().numpy().T
+
+                t_cond_points = t_cond[i].detach().cpu().numpy()
+                t_target_points = t_target[i].detach().cpu().numpy()
+                t_generated_points = t_generated[i].detach().cpu().numpy()
+
+                _, psd_cond = lps_bb.psd(t_cond_points, fs, window_size=4096, overlap=0.5)
+                _, psd_target = lps_bb.psd(t_target_points, fs, window_size=4096, overlap=0.5)
+                _, psd_generated = lps_bb.psd(t_generated_points, fs, window_size=4096, overlap=0.5)
+
+                # lps_bb.plot_psds(
+                #     filename=os.path.join(args.output_dir, f"psd_{global_sample_id:06d}.png"),
+                #     fs=fs,
+                #     noises=[t_cond_points, t_target_points, t_generated_points],
+                #     labels=["Conditioning", "Target", "Generated"],
+                #     window_size=4096,
+                #     overlap=0.5
+                # )
 
                 # print("")
                 # print("########")
@@ -183,6 +213,36 @@ def main():
 
                 rdi_as.append(rdi_a)
                 rdi_bs.append(rdi_b)
+
+                psd_cond = psd_cond - np.mean(psd_cond)
+                psd_target = psd_target - np.mean(psd_target)
+                psd_generated = psd_generated - np.mean(psd_generated)
+
+                psd_coor_cg = np.corrcoef(psd_cond, psd_generated)[0,1]
+                psd_coor_tg = np.corrcoef(psd_target, psd_generated)[0,1]
+                psd_coor_ct = np.corrcoef(psd_cond, psd_target)[0,1]
+                # print("\t psd_coor_cg: ", psd_coor_cg)
+                # print("\t psd_coor_tg: ", psd_coor_tg)
+                # print("\t psd_coor_ct: ", psd_coor_ct)
+
+                m = (psd_coor_tg - psd_coor_cg)/(1 - psd_coor_ct)
+                ms.append(psd_coor_tg > psd_coor_cg)
+                # print("\t m: ", m)
+
+
+                # t_coss_cg = sci_dist.cosine(t_cond_points, t_generated_points)
+                # t_coss_tg = sci_dist.cosine(t_target_points, t_generated_points)
+                # t_coss_ct = sci_dist.cosine(t_cond_points, t_target_points)
+                # print("\t t_coss_cg: ", t_coss_cg)
+                # print("\t t_coss_tg: ", t_coss_tg)
+                # print("\t t_coss_ct: ", t_coss_ct)
+
+                # psd_coss_cg = sci_dist.cosine(psd_cond, psd_generated)
+                # psd_coss_tg = sci_dist.cosine(psd_target, psd_generated)
+                # psd_coss_ct = sci_dist.cosine(psd_cond, psd_target)
+                # print("\t psd_coss_cg: ", psd_coss_cg)
+                # print("\t psd_coss_tg: ", psd_coss_tg)
+                # print("\t psd_coss_ct: ", psd_coss_ct)
 
                 # diff_cond = mse_similarity(cond_points, generated_points)
                 # diff_target = mse_similarity(target_points, generated_points)
@@ -228,6 +288,7 @@ def main():
     print("samples: ", len(rdi_as), " -> ", len(rdi_bs))
     print("rdi_as: ", np.mean(rdi_as), " -> ", np.max(rdi_as), " | ", np.min(rdi_as))
     print("rdi_bs: ", np.mean(rdi_bs), " -> ", np.max(rdi_bs), " | ", np.min(rdi_bs))
+    print("ms: ", np.mean(ms), " -> ", np.max(ms), " | ", np.min(ms))
 
 if __name__ == "__main__":
     main()

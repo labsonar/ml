@@ -34,12 +34,16 @@ class VAEEncoder(ml_core.AudioPipeline):
         if not hasattr(self.model, "decode"):
             print("[WARNING] Model has no decode() method")
 
-    def decode(self, z: np.ndarray) -> np.ndarray:
+    def decode(self, z: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
         """
         Decode latent representation back to waveform.
         """
+        input_is_numpy = isinstance(z, np.ndarray)
 
-        z = torch.from_numpy(z).to(self.device)
+        if input_is_numpy:
+            z = torch.from_numpy(z)
+
+        z = z.to(self.device)
 
         if z.ndim == 2:
             z = z.unsqueeze(0)
@@ -47,8 +51,18 @@ class VAEEncoder(ml_core.AudioPipeline):
         with torch.inference_mode():
             x = self.model.decode(z)
 
-        x = x.detach().cpu().numpy()
-        return np.squeeze(x, axis=0)
+        if input_is_numpy:
+            return x.detach().cpu().numpy()
+
+        if x.ndim == 3 and x.shape[1] == 1:
+            x = torch.squeeze(x, dim=1)
+        if x.ndim == 2 and x.shape[0] == 1:
+            x = torch.squeeze(x, dim=0)
+
+        if input_is_numpy:
+            return x.detach().cpu().numpy()
+
+        return x
 
     def process(
         self,
