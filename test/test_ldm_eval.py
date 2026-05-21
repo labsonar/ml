@@ -7,6 +7,7 @@ import argparse
 import numpy as np
 import scipy.linalg as sci_alg
 import scipy.spatial.distance as sci_dist
+import sklearn.decomposition as skl_dec
 
 import torch
 
@@ -198,8 +199,8 @@ def main():
                 # )
 
                 # print("")
-                # print("########")
-                # print("sample: ", i)
+                print("########")
+                print("sample: ", i)
                 # print("\t cond_points: ", cond_points.shape)
                 # print("\t target_points: ", target_points.shape)
                 # print("\t generated_points: ", generated_points.shape)
@@ -280,10 +281,23 @@ def main():
                 #     filename=tsne_filename
                 # )
 
+                pca_cond = skl_dec.PCA(n_components=2).fit(cond_points).components_
+                pca_target = skl_dec.PCA(n_components=2).fit(target_points).components_
+                pca_generated = skl_dec.PCA(n_components=2).fit(generated_points).components_
+
+
+                pca_cg = np.mean(np.cos(sci_alg.subspace_angles(pca_cond.T, pca_generated.T)))
+                pca_tg = np.mean(np.cos(sci_alg.subspace_angles(pca_target.T, pca_generated.T)))
+                pca_ct = np.mean(np.cos(sci_alg.subspace_angles(pca_cond.T, pca_target.T)))
+
+                print("\t pca_cg: ", pca_cg)
+                print("\t pca_tg: ", pca_tg)
+                print("\t pca_ct: ", pca_ct)
+
                 global_sample_id += 1
 
                 # break
-            # break
+            break
 
     print("samples: ", len(rdi_as), " -> ", len(rdi_bs))
     print("rdi_as: ", np.mean(rdi_as), " -> ", np.max(rdi_as), " | ", np.min(rdi_as))
