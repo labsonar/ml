@@ -3,11 +3,14 @@ Evaluate a trained Latent Diffusion Model (LDM) over the validation set.
 """
 
 import os
+import shutil
 import argparse
+import collections
 import numpy as np
 import scipy.linalg as sci_alg
 import scipy.spatial.distance as sci_dist
 import sklearn.decomposition as skl_dec
+import ot
 
 import torch
 
@@ -21,15 +24,19 @@ import lps_ml.visualization.tsne as ml_vis
 import lps_sp.acoustical.broadband as lps_bb
 import lps_utils.quantities as lps_qty
 
-# def cosine_similarity(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-#     """
-#     Computes cosine similarity between latent tensors.
-#     """
-#     a = a.flatten(start_dim=1)
-#     b = b.flatten(start_dim=1)
+def wasserstein(points_a: np.ndarray, points_b: np.ndarray) -> float:
 
-#     return F.cosine_similarity(a, b, dim=1)
+    n_a = len(points_a)
+    n_b = len(points_b)
 
+    a = np.ones((n_a,)) / n_a
+    b = np.ones((n_b,)) / n_b
+
+    M = ot.dist(points_a, points_b, metric='sqeuclidean')
+
+    wasserstein_sq = ot.emd2(a, b, M)
+
+    return float(np.sqrt(wasserstein_sq))
 
 def latent_fid(points_a: np.ndarray, points_b: np.ndarray) -> float:
 
@@ -109,7 +116,11 @@ def main():
 
     args = parser.parse_args()
 
+    psd_dir = os.path.join(args.output_dir, "psd")
+    tsne_dir = os.path.join(args.output_dir, "tsne")
     os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(psd_dir, exist_ok=True)
+    os.makedirs(tsne_dir, exist_ok=True)
 
     torch.set_float32_matmul_precision("medium")
     ml_utils.set_seed()
@@ -119,8 +130,8 @@ def main():
     dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
     channel_selection = ml_db.ChannelSelection[args.channel_selection]
 
-    n_samples = int(2**17)
-    overlap = int(2**16)
+    n_samples = int(2**19)
+    overlap = int(2**18)
     fs = lps_qty.Frequency.khz(16)
 
     vae_encoder = ml_procs.VAEEncoder(args.vae_model)
@@ -151,9 +162,13 @@ def main():
     model.eval()
     model.to(device)
 
-    rdi_as = []
-    rdi_bs = []
-    ms = []
+    metrics = collections.defaultdict(list)
+
+    all_latent = []
+    all_psd = []
+    all_labels = []
+
+    sample_metrics = []
 
     with torch.no_grad():
 
@@ -171,10 +186,6 @@ def main():
             t_target = vae_encoder.decode(x_target)
             t_generated = vae_encoder.decode(x_generated)
 
-            # print("t_cond: ", t_cond.shape)
-            # print("t_target: ", t_target.shape)
-            # print("t_generated: ", t_generated.shape)
-
             for i in range(x_cond.shape[0]):
 
                 cond_points = x_cond[i].detach().cpu().numpy().T
@@ -189,120 +200,237 @@ def main():
                 _, psd_target = lps_bb.psd(t_target_points, fs, window_size=4096, overlap=0.5)
                 _, psd_generated = lps_bb.psd(t_generated_points, fs, window_size=4096, overlap=0.5)
 
-                # lps_bb.plot_psds(
-                #     filename=os.path.join(args.output_dir, f"psd_{global_sample_id:06d}.png"),
-                #     fs=fs,
-                #     noises=[t_cond_points, t_target_points, t_generated_points],
-                #     labels=["Conditioning", "Target", "Generated"],
-                #     window_size=4096,
-                #     overlap=0.5
-                # )
+                all_latent.append(cond_points.reshape(-1))
+                all_psd.append(psd_cond)
+                all_labels.append("Conditioning")
 
-                # print("")
-                print("########")
-                print("sample: ", i)
-                # print("\t cond_points: ", cond_points.shape)
-                # print("\t target_points: ", target_points.shape)
-                # print("\t generated_points: ", generated_points.shape)
+                all_latent.append(target_points.reshape(-1))
+                all_psd.append(psd_target)
+                all_labels.append("Target")
 
-                fid_cond = latent_fid(cond_points, generated_points)
-                fid_target = latent_fid(target_points, generated_points)
-                fid_ref = latent_fid(target_points, cond_points)
+                all_latent.append(generated_points.reshape(-1))
+                all_psd.append(psd_generated)
+                all_labels.append("Generated")
 
-                rdi_a = 1 - fid_target/fid_ref
-                rdi_b = fid_cond/fid_target
+                n_components=1
+                pca_cond = skl_dec.PCA(n_components=n_components).fit(cond_points).components_
+                pca_target = skl_dec.PCA(n_components=n_components).fit(target_points).components_
+                pca_generated = skl_dec.PCA(n_components=n_components).fit(generated_points).components_
 
-                rdi_as.append(rdi_a)
-                rdi_bs.append(rdi_b)
+                ### ========= Plot PSDs ========= ###
+                lps_bb.plot_psds(
+                    filename=os.path.join(psd_dir, f"psd_{global_sample_id:06d}.png"),
+                    fs=fs,
+                    noises=[t_cond_points, t_target_points, t_generated_points],
+                    labels=["Conditioning", "Target", "Generated"],
+                    window_size=4096,
+                    overlap=0.5
+                )
 
-                psd_cond = psd_cond - np.mean(psd_cond)
-                psd_target = psd_target - np.mean(psd_target)
-                psd_generated = psd_generated - np.mean(psd_generated)
+                ### ========= MSE ========= ###
+                latent_dist_cg = mse_similarity(cond_points, generated_points)
+                latent_dist_tg = mse_similarity(target_points, generated_points)
+                latent_dist_ct = mse_similarity(target_points, cond_points)
 
-                psd_coor_cg = np.corrcoef(psd_cond, psd_generated)[0,1]
-                psd_coor_tg = np.corrcoef(psd_target, psd_generated)[0,1]
-                psd_coor_ct = np.corrcoef(psd_cond, psd_target)[0,1]
-                # print("\t psd_coor_cg: ", psd_coor_cg)
-                # print("\t psd_coor_tg: ", psd_coor_tg)
-                # print("\t psd_coor_ct: ", psd_coor_ct)
+                latent_dist_align = 1 - latent_dist_tg/latent_dist_ct
+                latent_dist_prox = latent_dist_cg/latent_dist_tg
 
-                m = (psd_coor_tg - psd_coor_cg)/(1 - psd_coor_ct)
-                ms.append(psd_coor_tg > psd_coor_cg)
-                # print("\t m: ", m)
+                metrics["latent_dist_cg"].append(latent_dist_cg)
+                metrics["latent_dist_tg"].append(latent_dist_tg)
+                metrics["latent_dist_ct"].append(latent_dist_ct)
+                metrics["latent_dist_align"].append(latent_dist_align)
+                metrics["latent_dist_prox"].append(latent_dist_prox)
 
+                ## ========= FID ========= ###
+                fid_cg = latent_fid(cond_points, generated_points)
+                fid_tg = latent_fid(target_points, generated_points)
+                fid_ct = latent_fid(target_points, cond_points)
 
-                # t_coss_cg = sci_dist.cosine(t_cond_points, t_generated_points)
-                # t_coss_tg = sci_dist.cosine(t_target_points, t_generated_points)
-                # t_coss_ct = sci_dist.cosine(t_cond_points, t_target_points)
-                # print("\t t_coss_cg: ", t_coss_cg)
-                # print("\t t_coss_tg: ", t_coss_tg)
-                # print("\t t_coss_ct: ", t_coss_ct)
+                fid_align = 1 - fid_tg/fid_ct
+                fid_prox = fid_cg/fid_tg
 
-                # psd_coss_cg = sci_dist.cosine(psd_cond, psd_generated)
-                # psd_coss_tg = sci_dist.cosine(psd_target, psd_generated)
-                # psd_coss_ct = sci_dist.cosine(psd_cond, psd_target)
-                # print("\t psd_coss_cg: ", psd_coss_cg)
-                # print("\t psd_coss_tg: ", psd_coss_tg)
-                # print("\t psd_coss_ct: ", psd_coss_ct)
+                metrics["fid_cg"].append(fid_cg)
+                metrics["fid_tg"].append(fid_tg)
+                metrics["fid_ct"].append(fid_ct)
+                metrics["fid_align"].append(fid_align)
+                metrics["fid_prox"].append(fid_prox)
 
-                # diff_cond = mse_similarity(cond_points, generated_points)
-                # diff_target = mse_similarity(target_points, generated_points)
-                # diff_ref = mse_similarity(target_points, cond_points)
+                sample_metrics.append({
+                    "global_id": global_sample_id,
+                    "ord": fid_prox,
+                })
 
-                # print("\t diff_cond: ", diff_cond)
-                # print("\t diff_target: ", diff_target)
-                # print("\t diff_ref: ", diff_ref)
+                ## ========= Wassertein ========= ###
+                wass_cg = wasserstein(cond_points, generated_points)
+                wass_tg = wasserstein(target_points, generated_points)
+                wass_ct = wasserstein(target_points, cond_points)
 
-                # tsne_data = np.concatenate(
-                #     [
-                #         cond_points,
-                #         target_points,
-                #         generated_points
-                #     ],
-                #     axis=0
-                # )
+                wass_align = 1 - wass_tg/wass_ct
+                wass_prox = wass_cg/wass_tg
 
-                # tsne_labels = np.concatenate(
-                #     [
-                #         np.full(cond_points.shape[0], "Conditioning"),
-                #         np.full(target_points.shape[0], "Target"),
-                #         np.full(generated_points.shape[0], "Generated"),
-                #     ]
-                # )
+                metrics["wass_cg"].append(wass_cg)
+                metrics["wass_tg"].append(wass_tg)
+                metrics["wass_ct"].append(wass_ct)
+                metrics["wass_align"].append(wass_align)
+                metrics["wass_prox"].append(wass_prox)
 
-                # tsne_filename = os.path.join(
-                #     args.output_dir,
-                #     f"sample_{global_sample_id:06d}_tsne.png"
-                # )
-
-                # ml_vis.export_tsne(
-                #     data=tsne_data,
-                #     labels=tsne_labels,
-                #     filename=tsne_filename
-                # )
-
-                pca_cond = skl_dec.PCA(n_components=2).fit(cond_points).components_
-                pca_target = skl_dec.PCA(n_components=2).fit(target_points).components_
-                pca_generated = skl_dec.PCA(n_components=2).fit(generated_points).components_
-
-
+                ## ========= PCA  ========= ###
                 pca_cg = np.mean(np.cos(sci_alg.subspace_angles(pca_cond.T, pca_generated.T)))
                 pca_tg = np.mean(np.cos(sci_alg.subspace_angles(pca_target.T, pca_generated.T)))
                 pca_ct = np.mean(np.cos(sci_alg.subspace_angles(pca_cond.T, pca_target.T)))
 
-                print("\t pca_cg: ", pca_cg)
-                print("\t pca_tg: ", pca_tg)
-                print("\t pca_ct: ", pca_ct)
+                pca_align = 1 - pca_tg/pca_ct
+                pca_prox = pca_cg/pca_tg
+
+                metrics["pca_cg"].append(pca_cg)
+                metrics["pca_tg"].append(pca_tg)
+                metrics["pca_ct"].append(pca_ct)
+                metrics["pca_align"].append(pca_align)
+                metrics["pca_prox"].append(pca_prox)
+
+                # ========= PSD MSE ========= ###
+                psd_dist_cg = mse_similarity(psd_cond, psd_generated)
+                psd_dist_tg = mse_similarity(psd_target, psd_generated)
+                psd_dist_ct = mse_similarity(psd_target, psd_cond)
+
+                psd_dist_align = 1 - psd_dist_tg/psd_dist_ct
+                psd_dist_prox = psd_dist_cg/psd_dist_tg
+
+                metrics["psd_dist_cg"].append(psd_dist_cg)
+                metrics["psd_dist_tg"].append(psd_dist_tg)
+                metrics["psd_dist_ct"].append(psd_dist_ct)
+                metrics["psd_dist_align"].append(psd_dist_align)
+                metrics["psd_dist_prox"].append(psd_dist_prox)
+
+
+                ### ========= PSD Corr ========= ###
+                psd_corr_cg = np.corrcoef(psd_cond, psd_generated)[0,1]
+                psd_corr_tg = np.corrcoef(psd_target, psd_generated)[0,1]
+                psd_corr_ct = np.corrcoef(psd_cond, psd_target)[0,1]
+
+                psd_corr_align = 1 - psd_corr_tg/psd_corr_ct
+                psd_corr_prox = psd_corr_cg/psd_corr_tg
+
+                metrics["psd_corr_cg"].append(psd_corr_cg)
+                metrics["psd_corr_tg"].append(psd_corr_tg)
+                metrics["psd_corr_ct"].append(psd_corr_ct)
+                metrics["psd_corr_align"].append(psd_corr_align)
+                metrics["psd_corr_prox"].append(psd_corr_prox)
+
+                ### ========= PSD cosine dist ========= ###
+                psd_dcos_cg = sci_dist.cosine(psd_cond, psd_generated)
+                psd_dcos_tg = sci_dist.cosine(psd_target, psd_generated)
+                psd_dcos_ct = sci_dist.cosine(psd_cond, psd_target)
+
+                psd_dcos_align = 1 - psd_dcos_tg/psd_dcos_ct
+                psd_dcos_prox = psd_dcos_cg/psd_dcos_tg
+
+                metrics["psd_dcos_cg"].append(psd_dcos_cg)
+                metrics["psd_dcos_tg"].append(psd_dcos_tg)
+                metrics["psd_dcos_ct"].append(psd_dcos_ct)
+                metrics["psd_dcos_align"].append(psd_dcos_align)
+                metrics["psd_dcos_prox"].append(psd_dcos_prox)
+
+
+                # ### ========= Transform cosine similarity ========= ###
+                delta_ct = target_points - cond_points
+                delta_cg = generated_points - cond_points
+
+                transform_cos = np.mean([
+                    1 - sci_dist.cosine(a, b) for a, b in zip(delta_ct, delta_cg)
+                ])
+                metrics["transform_cos"].append(transform_cos)
+
+                sample_metrics.append({
+                    "global_id": global_sample_id,
+                    "ord": transform_cos,
+                })
+
+
+                # ### ========= t-SNE latent ========= ###
+                tsne_data = np.concatenate(
+                    [
+                        cond_points,
+                        target_points,
+                        generated_points
+                    ],
+                    axis=0
+                )
+
+                tsne_labels = np.concatenate(
+                    [
+                        np.full(cond_points.shape[0], "Conditioning"),
+                        np.full(target_points.shape[0], "Target"),
+                        np.full(generated_points.shape[0], "Generated"),
+                    ]
+                )
+
+                tsne_filename = os.path.join(
+                    tsne_dir,
+                    f"sample_{global_sample_id:06d}_tsne.png"
+                )
+
+                ml_vis.export_tsne(
+                    data=tsne_data,
+                    labels=tsne_labels,
+                    filename=tsne_filename
+                )
 
                 global_sample_id += 1
 
-                # break
-            break
+            #     break
+            # break
 
-    print("samples: ", len(rdi_as), " -> ", len(rdi_bs))
-    print("rdi_as: ", np.mean(rdi_as), " -> ", np.max(rdi_as), " | ", np.min(rdi_as))
-    print("rdi_bs: ", np.mean(rdi_bs), " -> ", np.max(rdi_bs), " | ", np.min(rdi_bs))
-    print("ms: ", np.mean(ms), " -> ", np.max(ms), " | ", np.min(ms))
+    print("")
+
+    for name, values in metrics.items():
+
+        values = np.asarray(values)
+
+        print(
+            f"{name:10s}: "
+            f"median={np.median(values): .6f} | "
+            f"mean={np.mean(values): .6f} | "
+            f"std={np.std(values): .6f} | "
+            f"max={np.max(values): .6f} | "
+            f"min={np.min(values): .6f}"
+        )
+
+
+    all_latent = np.asarray(all_latent)
+    all_psd = np.asarray(all_psd)
+    all_labels = np.asarray(all_labels)
+
+    ml_vis.export_tsne(
+        data=all_psd,
+        labels=all_labels,
+        filename=os.path.join(args.output_dir, "tsne_psd.png")
+    )
+    ml_vis.export_tsne(
+        data=all_latent,
+        labels=all_labels,
+        filename=os.path.join(args.output_dir, "tsne_latent.png")
+    )
+
+    sample_metrics_sorted = sorted(
+        sample_metrics,
+        key=lambda x: x["ord"],
+        reverse=True
+    )
+
+    ordered_dir = os.path.join(args.output_dir, "ordered")
+    os.makedirs(ordered_dir, exist_ok=True)
+
+    for i, item in enumerate(sample_metrics_sorted):
+
+        global_id = item["global_id"]
+        ord = item["ord"]
+
+        # in_filename = os.path.join(tsne_dir, f"sample_{global_id:06d}_tsne.png")
+        in_filename = os.path.join(psd_dir, f"psd_{global_id:06d}.png")
+        out_filename = os.path.join(ordered_dir, f"{i}_{ord}_{global_id:06d}.png")
+
+        shutil.copy2(in_filename, out_filename)
 
 if __name__ == "__main__":
     main()
