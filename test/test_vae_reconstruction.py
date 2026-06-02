@@ -24,10 +24,10 @@ import lps_sp.signal as lps_sig
 
 def main():
 
+    builder = ml_db.IemanjaBuilder(time_exclusive=True)
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--vae-model", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="./result/psd_tsne")
 
     parser.add_argument(
@@ -37,48 +37,16 @@ def main():
         choices=[e.name for e in ml_cv.FoldRole]
     )
 
-
-    parser.add_argument(
-        "--dynamic_selection",
-        type=str,
-        default=ml_db.DynamicSelection.FIXED_ONLY.name,
-        choices=[e.name for e in ml_db.DynamicSelection]
-    )
-
-    parser.add_argument(
-        "--channel_selection",
-        type=str,
-        default=ml_db.ChannelSelection.REFERENCE_ONLY.name,
-        choices=[e.name for e in ml_db.ChannelSelection]
-    )
-
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     psd_dir = os.path.join(args.output_dir, "psd")
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(psd_dir, exist_ok=True)
 
-    dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
-    channel_selection = ml_db.ChannelSelection[args.channel_selection]
-
     fs = lps_qty.Frequency.khz(16)
-    n_samples = int(2**17)
-    overlap = int(2**16)
 
-    dm = ml_db.Iemanja(
-        file_processor=ml_procs.SampleProcessor(
-            n_samples=n_samples,
-            overlap=overlap,
-            pipelines=[
-                ml_procs.ToFloatConverter()
-            ]
-        ),
-        cv=ml_cv.SimpleSplitCV(),
-        dynamic_selection=dynamic_selection,
-        channel_selection=channel_selection,
-        batch_size=args.batch_size
-    )
-
+    dm = builder.from_argparse_args(args)
     dm.setup()
 
     role = args.fold_role
@@ -94,7 +62,7 @@ def main():
         elif role == ml_cv.FoldRole.TEST:
             loader = dm.test_dataloader()
 
-    vae_processor = ml_procs.VAEEncoder(args.model)
+    vae_processor = ml_procs.VAEEncoder(args.vae_model)
 
     device = ml_device.get_available_device()
     model = vae_processor.model
@@ -120,24 +88,24 @@ def main():
             target = np.squeeze(x[i])
             reconstructed = np.squeeze(x_rec[i])
 
-            # lps_sig.save_convert_wav(
-            #     signal = target,
-            #     fs = fs,
-            #     filename = os.path.join(psd_dir, f"{len(all_psd)}.wav")
-            # )
-            # lps_sig.save_convert_wav(
-            #     signal = reconstructed,
-            #     fs = fs,
-            #     filename = os.path.join(psd_dir, f"{len(all_psd)}_reconstructed.wav")
-            # )
-            # lps_bb.plot_psds(
-            #     filename = os.path.join(psd_dir, f"{len(all_data)}_psd.png"),
-            #     noises=[target, reconstructed],
-            #     labels=["Original", "Reconstructed"],
-            #     fs=fs,
-            #     window_size=4096,
-            #     overlap=0.5,
-            # )
+            lps_sig.save_convert_wav(
+                signal = target,
+                fs = fs,
+                filename = os.path.join(psd_dir, f"{len(all_psd)}.wav")
+            )
+            lps_sig.save_convert_wav(
+                signal = reconstructed,
+                fs = fs,
+                filename = os.path.join(psd_dir, f"{len(all_psd)}_reconstructed.wav")
+            )
+            lps_bb.plot_psds(
+                filename = os.path.join(psd_dir, f"{len(all_psd)}_psd.png"),
+                noises=[target, reconstructed],
+                labels=["Original", "Reconstructed"],
+                fs=fs,
+                window_size=4096,
+                overlap=0.5,
+            )
 
             _, target_psd = lps_bb.psd(
                 signal=target,
@@ -188,6 +156,8 @@ def main():
             all_psd.append(reconstructed_psd)
             all_mel.append(reconstructed_mel)
             all_labels.append(f"{y[i]}_reconstructed")
+
+        break
 
     psd = np.vstack(all_psd)
     mel = np.vstack(all_mel)

@@ -37,4 +37,4 @@ class SpectralProcessor(ml_core.AudioPipeline):
             params=self.params
         )
 
-        return fs, np.expand_dims(power, axis=0)
+        return fs, power

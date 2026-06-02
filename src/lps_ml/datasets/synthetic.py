@@ -4,6 +4,7 @@ Synthetic Data Module
 import enum
 import os
 import typing
+import argparse
 import pandas as pd
 
 import torch.utils.data as torch_data
@@ -11,7 +12,9 @@ import torch.utils.data as torch_data
 import lps_ml.core.loader as ml_loader
 import lps_ml.core.processor as ml_proc
 import lps_ml.core as ml_core
+import lps_ml.audio_processors as ml_procs
 import lps_ml.datasets.selection as ml_sel
+import lps_sp.acoustical.analysis as lps_analysis
 
 
 class DynamicSelection(enum.Enum):
@@ -152,6 +155,11 @@ class Iemanja(ml_core.AudioDataModule):
             filters=filters
         )
 
+    @staticmethod
+    def build_column_as_target(target_column: str) -> ml_sel.Selector:
+        target_column = target_column.upper()
+        return ml_sel.Selector(ml_sel.CombinationTarget(columns=[target_column]))
+
     def __init__(self,
                  file_processor: ml_core.AudioProcessor,
                  processed_dir: str = "/data/Processed_data/iemanja",
@@ -179,12 +187,7 @@ class Iemanja(ml_core.AudioDataModule):
         df = base_selector.apply(df)
 
         if selection is None:
-            selection = ml_sel.Selector(ml_sel.LabelTarget(
-                    column="CLASS",
-                    values=["Service","Cargo"],
-                    include_others=False
-                )
-            )
+            selection = Iemanja.build_column_as_target("CLASS")
 
         df = selection.apply(df)
 
@@ -208,6 +211,7 @@ class Iemanja(ml_core.AudioDataModule):
             "dynamic_selection": self.dynamic_selection.name,
             "channel_selection": self.channel_selection.name,
         }
+
 @ml_core.PairedAudioDataModule.register_pair_builder(Iemanja)
 def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
     """
@@ -267,3 +271,217 @@ def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(pairs)
 
 IemanjaPaired = ml_core.PairedAudioDataModule[Iemanja]
+
+class IemanjaBuilder:
+
+    def __init__(self, vae_exclusive = False, time_exclusive = False) -> None:
+        self.vae_exclusive = vae_exclusive
+        self.time_exclusive = time_exclusive
+
+    def _add_dataset_args(self, parser: argparse.ArgumentParser):
+
+        group = parser.add_argument_group(
+            "Iemanja Dataset",
+            "Dataset selection and labeling"
+        )
+
+        group.add_argument(
+            "--ie-dataset-dir",
+            type=str,
+            default="/data/iemanja",
+            help="Path to the raw dataset directory"
+        )
+
+        group.add_argument(
+            "--ie-processed-dir",
+            type=str,
+            default="/data/Processed_data/iemanja",
+            help="Path to the processed/cache directory"
+        )
+
+        group.add_argument(
+            "--ie-dynamic-selection",
+            type=str,
+            default=DynamicSelection.ALL.name,
+            choices=[e.name for e in DynamicSelection],
+            help="Dynamic scenario selection"
+        )
+
+        group.add_argument(
+            "--ie-channel-selection",
+            type=str,
+            default=ChannelSelection.ALL.name,
+            choices=[e.name for e in ChannelSelection],
+            help="Channel selection"
+        )
+
+        group.add_argument(
+            "--ie-target",
+            type=str,
+            default="CLASS",
+            help=(
+                "Column used as label target. "
+                "Examples: CLASS, CHANNEL, SHIP_TYPE."
+            )
+        )
+
+        group.add_argument(
+            "--ie-include-others",
+            action="store_true",
+            help="Create an additional target class for unmapped values."
+        )
+
+        group.add_argument("--ie-batch-size", type=int, default=32)
+        group.add_argument("--ie-num-workers", type=int, default=1)
+
+    def _add_processing_args(self, parser: argparse.ArgumentParser):
+
+        group = parser.add_argument_group(
+            "Iemanja Processing",
+            "Audio preprocessing and feature extraction"
+        )
+
+        if not self.vae_exclusive and not self.time_exclusive:
+
+            group.add_argument(
+                "--ie-representation",
+                type=str,
+                default="raw",
+                choices=[
+                    "raw",
+                    "spectral",
+                    "latent",
+                ],
+                help="Input representation."
+            )
+
+        group.add_argument(
+            "--ie-n-samples",
+            type=int,
+            default=2**17,
+            help="Window size before representation conversion."
+        )
+
+        group.add_argument(
+            "--ie-overlap",
+            type=int,
+            default=2**16,
+            help="Window overlap before representation conversion."
+        )
+
+        if not self.time_exclusive:
+
+            group.add_argument(
+                "--ie-latent-model",
+                type=str,
+                default=None,
+                help="Path to the latent encoder model."
+            )
+
+            group.add_argument(
+                "--ie-latent-compactness",
+                type=int,
+                default=1024,
+                help="Latent compression factor."
+            )
+
+        if not self.vae_exclusive and not self.time_exclusive:
+            lps_analysis.SpectralAnalysis.add_args(parser=parser)
+
+    def add_argparse_args(self, parser: argparse.ArgumentParser):
+        self._add_dataset_args(parser)
+        self._add_processing_args(parser)
+
+    def _build_file_processor(self,
+                             args: argparse.Namespace,
+                             vae_model: str | None = None,
+                             compactness: int = 1024) -> ml_core.AudioProcessor:
+
+        n_samples = args.ie_n_samples
+        overlap = args.ie_overlap
+
+        pipelines : typing.List[ml_proc.AudioPipeline] = [
+            ml_procs.ToFloatConverter()
+        ]
+
+        if not self.time_exclusive:
+
+            if vae_model is not None:
+                pipelines.append(ml_procs.VAEEncoder(vae_model))
+
+                n_samples=int(n_samples / compactness)
+                overlap=int(overlap / compactness)
+
+            elif self.vae_exclusive or args.ie_representation == "latent":
+
+                if args.ie_latent_model is None:
+
+                    if self.vae_exclusive:
+                        raise ValueError(
+                            "--ie-latent-model must be provided "
+                        )
+                    else:
+                        raise ValueError(
+                            "--ie-latent-model must be provided "
+                            "when --ie-representation latent"
+                        )
+
+                pipelines.append(ml_procs.VAEEncoder(args.ie_latent_model))
+
+                n_samples=int(n_samples / args.ie_latent_compactness)
+                overlap=int(overlap / args.ie_latent_compactness)
+
+            elif args.ie_representation == "spectral":
+
+                analysis, params = lps_analysis.SpectralAnalysis.build_from_args(args)
+
+                pipelines.append(ml_procs.SpectralProcessor(analysis=analysis, params=params))
+
+                n_samples=int(n_samples / params.n_spectral_pts)
+                overlap=int(overlap / params.n_spectral_pts)
+
+        return ml_procs.SampleProcessor(
+            n_samples=n_samples,
+            overlap=overlap,
+            pipelines=pipelines
+        )
+
+    def _build_args(self,
+                    args: argparse.Namespace,
+                    vae_model: str | None = None,
+                    compactness: int = 1024) -> dict:
+
+        file_processor = self._build_file_processor(args=args,
+                                                   vae_model=vae_model,
+                                                   compactness=compactness)
+        selection = Iemanja.build_column_as_target(target_column=args.ie_target)
+
+        return dict(
+            file_processor=file_processor,
+            dataset_dir=args.ie_dataset_dir,
+            processed_dir=args.ie_processed_dir,
+            dynamic_selection=DynamicSelection[args.ie_dynamic_selection],
+            channel_selection=ChannelSelection[args.ie_channel_selection],
+            batch_size=args.ie_batch_size,
+            cv=ml_core.SimpleSplitCV(),
+            selection=selection,
+            num_workers=args.ie_num_workers,
+        )
+
+    def from_argparse_args(self,
+                           args: argparse.Namespace,
+                           vae_model: str | None = None,
+                           compactness: int = 1024) -> Iemanja:
+
+        return Iemanja(
+            **self._build_args(args=args, vae_model=vae_model, compactness=compactness)
+        )
+
+    def paired_from_argparse_args(self,
+                                  args: argparse.Namespace,
+                                  vae_model: str | None = None,
+                                  compactness: int = 1024) -> IemanjaPaired:
+
+        return IemanjaPaired(
+            **self._build_args(args=args, vae_model=vae_model, compactness=compactness)
+        )

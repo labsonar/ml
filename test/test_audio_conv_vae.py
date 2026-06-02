@@ -16,6 +16,8 @@ import lps_ml.model.audio_vae as lps_audio_vae
 import lps_ml.datasets.selection as ml_sel
 
 def _main():
+    builder = ml_db.IemanjaBuilder(time_exclusive=True)
+
     parser = argparse.ArgumentParser(
         description="Test AudioFolder dataset"
     )
@@ -46,8 +48,6 @@ def _main():
                         help="Checkpoint pré-treinado para fine-tuning"
     )
 
-    parser.add_argument("--num_workers", type=int, default=1)
-    parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--kl_warmup_steps", type=int, default=1)
 
     parser.add_argument("--cls_warmup_steps", type=int, default=1)
@@ -59,6 +59,8 @@ def _main():
     parser.add_argument("--min_delta", type=float, default=0.001)
 
     parser.add_argument("--output_dir", type=str, default="./result/audio_conv_vae/test")
+
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     if args.resume_ckpt and args.pretrained_ckpt:
@@ -70,25 +72,7 @@ def _main():
     torch.set_float32_matmul_precision('medium')
     ml_utils.set_seed()
 
-    n_samples=int(2**17)    #8.192s
-    overlap=int(2**16)      #4.096s
-
-    dm = ml_db.Iemanja(
-            file_processor=ml_procs.SampleProcessor(
-                    n_samples=n_samples,
-                    overlap=overlap,
-                    pipelines=[ml_procs.ToFloatConverter()]
-                ),
-            cv = ml_cv.SimpleSplitCV(),
-            dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
-            channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            selection=ml_sel.Selector(
-                # target=ml_sel.CombinationTarget(["SCENARIO_CATALOG_ID", "CLASS"])
-                target=ml_sel.CombinationTarget(["CLASS"])
-            )
-        )
+    dm = builder.from_argparse_args(args)
 
     if args.pretrained_ckpt is not None:
         model = lps_audio_vae.CONV_VAE.load_from_checkpoint(
@@ -131,6 +115,7 @@ def _main():
             min_delta = args.min_delta,
         )
 
+    dm.num_workers = 0
     trainer.fit(model, datamodule=dm, ckpt_path=args.resume_ckpt)
     print("Treino concluído. Gerando reconstruções finais...")
 

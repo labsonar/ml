@@ -48,36 +48,20 @@ def _evaluate_accuracy(model: torch.nn.Module,
 def _main():
     """Main function for the dataset info tables."""
 
+    builder = ml_db.IemanjaBuilder()
+
     parser = argparse.ArgumentParser(description="Train an MLP classifier on iara.")
-    parser.add_argument("--data-dir", type=str, default="/data",
-                        help="Directory to store iara data.")
-    parser.add_argument("--batch-size", type=int, default=64,
-                        help="Batch size for training.")
     parser.add_argument("--max-epochs", type=int, default=200,
                         help="Maximum number of training epochs.")
     parser.add_argument("--lr", type=float, default=1e-3,
                         help="Learning rate.")
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     torch.set_float32_matmul_precision('medium')
     ml_utils.set_seed()
 
-    fs_out=lps_qty.Frequency.khz(16)
-    duration=lps_qty.Time.s(1)
-    overlap=lps_qty.Time.s(0)
-
-    dm = ml_db.Iemanja(
-            file_processor=ml_procs.TimeProcessor(
-                    fs_out=fs_out,
-                    duration=duration,
-                    overlap=overlap,
-                    pipelines=ml_procs.CPADetector(duration, duration * 60)
-                ),
-            cv = ml_cv.FiveByTwo(),
-            dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
-            channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
-            batch_size=16
-            )
+    dm = builder.from_argparse_args(args)
 
     print(ml_utils.format_header(60,"Dataset description"))
     print(dm.to_compile_df())
@@ -87,7 +71,7 @@ def _main():
     print()
     print(dm.to_df())
 
-    dm.to_df().to_csv("./result/identified.csv")
+    # dm.to_df().to_csv("./result/identified.csv")
 
     model = ml_model.MLP(
         input_shape=dm.get_sample_shape(),

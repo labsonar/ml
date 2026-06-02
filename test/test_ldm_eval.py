@@ -67,32 +67,18 @@ def mse_similarity(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 def main():
 
+    builder = ml_db.IemanjaBuilder(vae_exclusive=True)
+
     parser = argparse.ArgumentParser(
         description="Evaluate LDM latent reconstructions."
     )
 
     parser.add_argument(
-        "--checkpoint",
+        "--ldm-checkpoint",
         type=str,
         required=True,
         help="Path to LDM checkpoint (.ckpt)"
     )
-
-    parser.add_argument(
-        "--vae-model",
-        type=str,
-        required=True,
-        help="Path to VAE encoder model"
-    )
-
-    parser.add_argument(
-        "--latent_compactness",
-        type=int,
-        default=1024
-    )
-
-    parser.add_argument("--batch-size", type=int, default=16,
-                        help="Batch size for training.")
 
     parser.add_argument(
         "--output-dir",
@@ -100,20 +86,7 @@ def main():
         default="./result/ldm_eval"
     )
 
-    parser.add_argument(
-        "--dynamic_selection",
-        type=str,
-        default=ml_db.DynamicSelection.FIXED_ONLY.name,
-        choices=[e.name for e in ml_db.DynamicSelection],
-    )
-
-    parser.add_argument(
-        "--channel_selection",
-        type=str,
-        default=ml_db.ChannelSelection.REFERENCE_ONLY.name,
-        choices=[e.name for e in ml_db.ChannelSelection],
-    )
-
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     psd_dir = os.path.join(args.output_dir, "psd")
@@ -127,36 +100,17 @@ def main():
 
     device = ml_device.get_available_device()
 
-    dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
-    channel_selection = ml_db.ChannelSelection[args.channel_selection]
-
-    n_samples = int(2**19)
-    overlap = int(2**18)
     fs = lps_qty.Frequency.khz(16)
 
-    vae_encoder = ml_procs.VAEEncoder(args.vae_model)
 
-    dm = ml_db.IemanjaPaired(
-        file_processor=ml_procs.SampleProcessor(
-            n_samples=int(n_samples / args.latent_compactness),
-            overlap=int(overlap / args.latent_compactness),
-            pipelines=[
-                ml_procs.ToFloatConverter(),
-                vae_encoder
-            ]
-        ),
-        cv=ml_cv.SimpleSplitCV(),
-        dynamic_selection=dynamic_selection,
-        channel_selection=channel_selection,
-        batch_size=args.batch_size
-    )
-
+    dm = builder.paired_from_argparse_args(args)
+    vae_encoder = dm.file_processor.pipelines[-1]
     dm.setup()
 
     val_loader = dm.val_dataloader()
 
     model = ml_model.LatentDiffusionModel.load_from_checkpoint(
-        checkpoint_path=args.checkpoint
+        checkpoint_path=args.ldm_checkpoint
     )
 
     model.eval()

@@ -173,66 +173,24 @@ class SampleReconstructionCallback(lightning.Callback):
 def _main():
     """Main function for the dataset info tables."""
 
+    builder = ml_db.IemanjaBuilder()
+
     parser = argparse.ArgumentParser(description="Train an LDM on simple_version of iemanja.")
-    parser.add_argument("--model", type=str, default="/data/models/v0_6M.ts")
-    parser.add_argument("--batch-size", type=int, default=16,
-                        help="Batch size for training.")
-    parser.add_argument("--latent_compactness", type=int, default=1024, help="Compression of VAE.")
     parser.add_argument("--ldm-steps", type=int, default=300, help="Denoising steps for LDM.")
     parser.add_argument("--max-epochs", type=int, default=1000,
                         help="Maximum number of training epochs.")
     parser.add_argument("--lr", type=float, default=1e-4,
                         help="Learning rate.")
     parser.add_argument("--output-dir", type=str, default="./result/ldm")
-    parser.add_argument(
-        "--dynamic_selection",
-        type=str,
-        default=ml_db.DynamicSelection.FIXED_ONLY.name,
-        choices=[e.name for e in ml_db.DynamicSelection],
-        help=(
-            "Dynamic selection mode. "
-            f"Options: {[e.name for e in ml_db.DynamicSelection]}"
-        )
-    )
-    parser.add_argument(
-        "--channel_selection",
-        type=str,
-        default=ml_db.ChannelSelection.REFERENCE_ONLY.name,
-        choices=[e.name for e in ml_db.ChannelSelection],
-        help=(
-            "Channel selection mode. "
-            f"Options: {[e.name for e in ml_db.ChannelSelection]}"
-        )
-    )
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
-
-    dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
-    channel_selection = ml_db.ChannelSelection[args.channel_selection]
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     torch.set_float32_matmul_precision('medium')
     ml_utils.set_seed()
 
-    n_samples=int(2**17)    #8.192s
-    overlap=int(2**16)      #4.096s
-
-    vae_encoder = ml_procs.VAEEncoder(args.model)
-
-    dm = ml_db.IemanjaPaired(
-            file_processor=ml_procs.SampleProcessor(
-                    n_samples=int(n_samples/args.latent_compactness),
-                    overlap=int(overlap/args.latent_compactness),
-                    pipelines=[
-                        ml_procs.ToFloatConverter(),
-                        vae_encoder
-                    ]
-                ),
-            cv = ml_cv.SimpleSplitCV(),
-            dynamic_selection=dynamic_selection,
-            channel_selection=channel_selection,
-            batch_size=args.batch_size
-            )
+    dm = builder.from_argparse_args(args)
     dm.setup()
 
     print(ml_utils.format_header(60,"Dataset description"))

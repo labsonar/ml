@@ -191,7 +191,6 @@ class VAEComparisonCallback(lightning.Callback):
             tag=f"epoch_{trainer.current_epoch}"
         )
 
-
 def _main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -290,7 +289,6 @@ def _main():
         n_samples=10,
         epoch_tag="after_training_latent"
     )
-
 
 if __name__ == "__main__":
     _main()

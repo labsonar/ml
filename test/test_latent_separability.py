@@ -101,6 +101,8 @@ def _parse_model_specs(model_specs: list[str], default_compactness: int) -> typi
 
 def main():
 
+    builder = ml_db.IemanjaBuilder(vae_exclusive=True)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--models",
@@ -115,28 +117,8 @@ def main():
         default=["KNN"],
         choices=[m.name for m in ml_sep.Separability]
     )
-    parser.add_argument(
-        "--dynamic_selection",
-        type=str,
-        default=ml_db.DynamicSelection.FIXED_ONLY.name,
-        choices=[e.name for e in ml_db.DynamicSelection],
-        help=(
-            "Dynamic selection mode. "
-            f"Options: {[e.name for e in ml_db.DynamicSelection]}"
-        )
-    )
-    parser.add_argument(
-        "--channel_selection",
-        type=str,
-        default=ml_db.ChannelSelection.REFERENCE_ONLY.name,
-        choices=[e.name for e in ml_db.ChannelSelection],
-        help=(
-            "Channel selection mode. "
-            f"Options: {[e.name for e in ml_db.ChannelSelection]}"
-        )
-    )
-    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--output_dir", type=str, default="./result/latent_separability")
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     output_dir = args.output_dir
@@ -144,40 +126,17 @@ def main():
 
     metrics = [ml_sep.Separability[m].get() for m in args.metrics]
 
-    dynamic_selection = ml_db.DynamicSelection[args.dynamic_selection]
-    channel_selection = ml_db.ChannelSelection[args.channel_selection]
-
     latent_results = {}
 
     compactness_dict = _parse_model_specs(args.models, args.default_compactness)
     models = compactness_dict.keys()
-
-    n_samples=int(2**17)    #8.192s
-    overlap=int(2**16)      #4.096s
 
     for name, model_path in ml_utils.shortest_relative_path(models):
 
         try:
             latent_compactness = compactness_dict[model_path]
 
-            latent_dm = ml_db.Iemanja(
-                    file_processor=ml_procs.SampleProcessor(
-                            # n_samples=1,
-                            # overlap=0,
-                            n_samples=int(n_samples/latent_compactness),
-                            overlap=int(overlap/latent_compactness),
-                            pipelines=[
-                                ml_procs.ToFloatConverter(),
-                                ml_procs.VAEEncoder(model_path)
-                            ]
-                        ),
-                    cv = ml_cv.FiveByTwo(),
-                    dynamic_selection=dynamic_selection,
-                    channel_selection=channel_selection,
-                    batch_size=args.batch_size,
-                    num_workers=0
-                    )
-            latent_dm.num_workers=0
+            latent_dm = builder.from_argparse_args(args, model_path, latent_compactness)
             latent_dm.setup()
             latent_dict_loader = latent_dm.val_dataloader_dict()
 

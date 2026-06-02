@@ -28,7 +28,6 @@ def compute_scores(W_ct, W_gt, W_cg):
 
     return S1, S2
 
-
 def evaluate_loader(model, loader, device):
     model.eval()
 
@@ -58,7 +57,6 @@ def evaluate_loader(model, loader, device):
 
     return S1_all, S2_all
 
-
 def summarize(values: np.ndarray):
     return {
         "mean": float(np.mean(values)),
@@ -67,40 +65,21 @@ def summarize(values: np.ndarray):
         "median": float(np.median(values)),
     }
 
-
 def main():
+    builder = ml_db.IemanjaBuilder(vae_exclusive=True)
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-checkpoint", type=str, required=True)
-    parser.add_argument("--vae-model", type=str, default="/data/models/v0_6M.ts")
-    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--ldm-checkpoint", type=str, required=True)
     parser.add_argument("--output", type=str, default="./wasserstein_metrics.csv")
 
+    builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     ml_utils.set_seed()
 
     device = ml_device.get_available_device()
 
-    vae_encoder = ml_procs.VAEEncoder(args.vae_model)
-
-    n_samples = int(2**17)
-    overlap = int(2**16)
-    latent_compactness = int(2**10)
-
-    dm = ml_db.IemanjaPaired(
-        file_processor=ml_procs.SampleProcessor(
-            n_samples=int(n_samples / latent_compactness),
-            overlap=int(overlap / latent_compactness),
-            pipelines=[
-                ml_procs.ToFloatConverter(),
-                vae_encoder
-            ]
-        ),
-        cv=ml_cv.SimpleSplitCV(),
-        dynamic_selection=ml_db.DynamicSelection.FIXED_ONLY,
-        channel_selection=ml_db.ChannelSelection.REFERENCE_ONLY,
-        batch_size=args.batch_size
-    )
+    dm = builder.paired_from_argparse_args(args)
     dm.setup()
 
     train_loader = dm.train_dataloader()
@@ -109,7 +88,7 @@ def main():
     latent_channels = x1.shape[1]
 
     model = ml_model.LatentDiffusionModel.load_from_checkpoint(
-        args.model_checkpoint,
+        args.ldm_checkpoint,
     )
     model.to(device)
 

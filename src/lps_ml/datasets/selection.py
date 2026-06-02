@@ -266,7 +266,6 @@ class CombinationTarget(Target):
     def label(self, input_df: pd.DataFrame) -> pd.DataFrame:
         df = input_df.copy()
         self.update_mapping(df)
-        self.n_targets = len(self._mapping)
 
         df[self.DEFAULT_TARGET_HEADER] = [
             self._mapping.get(comb, None) for comb in self._combinations
@@ -287,6 +286,7 @@ class CombinationTarget(Target):
             self._mapping = {
                 comb: idx for idx, comb in enumerate(unique_combinations)
             }
+            self.n_targets = len(self._mapping)
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, CombinationTarget) and \
