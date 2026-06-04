@@ -230,7 +230,6 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     def _build_dataloader(self,
                           df: pd.DataFrame,
                           shuffle: bool) -> torch_data.DataLoader:
-
         return torch_data.DataLoader(
             ProcessedDataset(df, self.processed_dir, self.transform),
             batch_size=self.batch_size,

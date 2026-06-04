@@ -91,6 +91,22 @@ def save_wav(data: np.ndarray | torch.Tensor,
 
     lps_sig.save_wav(data, fs, filename)
 
+def save_convert_wav(data: np.ndarray | torch.Tensor,
+             fs: int | lps_qty.Frequency,
+             filename: str) -> None:
+    """Export a .wav file
+
+    Args:
+        signal (np.ndarray, torch.Tensor): Signal to be normalized and exported
+        fs (int, lps_qty.Frequency): Sample Frequency
+        filename (str): Filename
+    """
+
+    if isinstance(data, torch.Tensor):
+        data = data.detach().cpu().numpy()
+
+    lps_sig.save_convert_wav(data, fs, filename)
+
 def shortest_relative_path(paths: list[str]) -> list[tuple[str, str]]:
     """
         Returns a list of tuples (name, path) where name is the shortest unique relative path

@@ -137,8 +137,10 @@ def main():
             latent_compactness = compactness_dict[model_path]
 
             latent_dm = builder.from_argparse_args(args, model_path, latent_compactness)
+            latent_dm.batch_size = 1
+            latent_dm.num_workers = 0
             latent_dm.setup()
-            latent_dict_loader = latent_dm.val_dataloader_dict()
+            latent_dict_loader = latent_dm.all_dataloader_dict()
 
             latent_results[name] = ml_sep.SeparabilityMetric.compare_dataloaders(
                 latent_dict_loader[0],
@@ -146,7 +148,7 @@ def main():
                 metrics
             )
 
-            loader = latent_dm.val_dataloader()
+            loader = latent_dm.all_dataloader()
 
             print("model: ", name)
             data, labels = _extract_latent_and_labels(loader)
