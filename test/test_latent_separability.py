@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pickle
+import umap
 
 import torch
 import torch.utils.data as torch_data
@@ -44,6 +46,59 @@ def _extract_latent_and_labels(loader):
     labels = np.concatenate(all_labels)
 
     return data, labels
+
+def export_umap(
+    data: np.ndarray,
+    labels: np.ndarray,
+    filename: str,
+    model_filename: str,
+    embedding_filename: str,
+    n_neighbors: int = 15,
+    min_dist: float = 0.1,
+    metric: str = "euclidean"
+):
+
+    reducer = umap.UMAP(
+        n_components=2,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        metric=metric,
+        random_state=0
+    )
+
+    embedding = reducer.fit_transform(data)
+
+    with open(model_filename, "wb") as f:
+        pickle.dump(reducer, f)
+
+    np.savez(
+        embedding_filename,
+        embedding=embedding,
+        labels=labels
+    )
+
+    plt.figure(figsize=(8, 8))
+
+    unique_labels = np.unique(labels)
+
+    for label in unique_labels:
+
+        mask = labels == label
+
+        plt.scatter(
+            embedding[mask, 0],
+            embedding[mask, 1],
+            s=8,
+            alpha=0.7,
+            label=str(label)
+        )
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.close()
+
+    return reducer
 
 def _save_metric_heatmaps(df, output_dir):
 
@@ -110,6 +165,7 @@ def main():
         required=True,
         help="List of model_path:latent_compactness"
     )
+    parser.add_argument("--export_umap", action="store_true", help="Export umap")
     parser.add_argument("--default_compactness", type=int, default=1024)
     parser.add_argument(
         "--metrics",
@@ -163,6 +219,23 @@ def main():
             )
 
             print(f"Saved t-SNE: {filename}")
+
+            if args.export_umap:
+
+                umap_plot = os.path.join(output_dir, f"umap_{aux_name}.png")
+                umap_model = os.path.join(output_dir, f"umap_{aux_name}.pkl")
+                umap_embedding = os.path.join(output_dir, f"umap_{aux_name}.npz")
+
+                export_umap(
+                    data=data,
+                    labels=labels,
+                    filename=umap_plot,
+                    model_filename=umap_model,
+                    embedding_filename=umap_embedding,
+                    metric="cosine"
+                )
+
+                print(f"Saved UMAP: {umap_plot}")
 
         except Exception as e:
             print(f"Error processing {model_path}: {e}")

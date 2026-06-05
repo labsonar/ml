@@ -1,3 +1,4 @@
+import enum
 import typing
 import math
 
@@ -6,6 +7,11 @@ import lightning
 
 import lps_ml.model.blocks.unet as ml_unet
 
+class LDMLoss(enum.Enum):
+    """ Loss functions for training the Latent Diffusion Model. """
+    MSE = enum.auto()
+    HUBER = enum.auto()
+    L1 = enum.auto()
 
 class LatentDiffusionModel(lightning.LightningModule):
 
@@ -26,6 +32,7 @@ class LatentDiffusionModel(lightning.LightningModule):
         beta_start: float = 1e-4,
         beta_end: float = 0.02,
         lr: float = 1e-4,
+        loss: LDMLoss = LDMLoss.MSE
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -45,6 +52,7 @@ class LatentDiffusionModel(lightning.LightningModule):
 
         self.timesteps = timesteps
         self.lr = lr
+        self.loss = loss
 
         betas = torch.linspace(beta_start, beta_end, timesteps)
         alphas = 1.0 - betas
@@ -86,7 +94,14 @@ class LatentDiffusionModel(lightning.LightningModule):
                                   target=x_noisy,
                                   t=t)
 
-        loss = torch.nn.functional.mse_loss(noise_pred, noise)
+        if self.loss == LDMLoss.MSE:
+            loss = torch.nn.functional.mse_loss(noise_pred, noise)
+        elif self.loss == LDMLoss.HUBER:
+            loss = torch.nn.functional.smooth_l1_loss(noise_pred, noise)
+        elif self.loss == LDMLoss.L1:
+            loss = torch.nn.functional.l1_loss(noise_pred, noise)
+        else:
+            raise ValueError(f"Unsupported loss type: {self.loss}")
 
         self.log(f"{stage}/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         return loss

@@ -8,8 +8,10 @@ import torch
 import torchaudio
 
 import lps_utils.utils as lps_utils
+import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
 import lps_ml.utils.general as ml_gen
+import lps_sp.acoustical.broadband as lps_bb
 
 
 def main():
@@ -100,6 +102,16 @@ def main():
                 data=recon_data,
                 fs=fs,
                 filename=output_file
+            )
+
+            psd_file = os.path.splitext(output_file)[0] + ".png"
+            lps_bb.plot_psds(
+                filename=psd_file,
+                noises=[waveform, recon_data],
+                labels=["Original", "Reconstrução"],
+                window_size=4096,
+                overlap=0.5,
+                fs=lps_qty.Frequency.hz(fs)
             )
 
 

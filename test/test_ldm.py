@@ -1,5 +1,4 @@
 """
-Olocum
 """
 import os
 import argparse
@@ -173,15 +172,69 @@ class SampleReconstructionCallback(lightning.Callback):
 def _main():
     """Main function for the dataset info tables."""
 
-    builder = ml_db.IemanjaBuilder()
+    builder = ml_db.IemanjaBuilder(vae_exclusive=True)
 
     parser = argparse.ArgumentParser(description="Train an LDM on simple_version of iemanja.")
     parser.add_argument("--ldm-steps", type=int, default=300, help="Denoising steps for LDM.")
-    parser.add_argument("--max-epochs", type=int, default=1000,
-                        help="Maximum number of training epochs.")
-    parser.add_argument("--lr", type=float, default=1e-4,
-                        help="Learning rate.")
+    parser.add_argument(
+        "--max-epochs",
+        type=int,
+        default=1000,
+        help="Maximum number of training epochs."
+    )
+
+    parser.add_argument(
+        "--base-channels",
+        type=int,
+        default=128,
+        help="Base number of channels in the U-Net."
+    )
+
+    parser.add_argument(
+        "--channel-ratios",
+        type=int,
+        nargs="+",
+        default=[1, 2, 4],
+        help="Channel multipliers for each U-Net level. Example: --channel-ratios 1 2 4 8"
+    )
+
+    parser.add_argument(
+        "--num-res-blocks",
+        type=int,
+        default=2,
+        help="Number of residual blocks per U-Net level."
+    )
+
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=1e-4,
+        help="Learning rate."
+    )
+
+    parser.add_argument(
+        "--loss",
+        type=str,
+        choices=[loss.name for loss in ml_model.LDMLoss],
+        default=ml_model.LDMLoss.MSE.name,
+        help="Loss function"
+    )
+
+    parser.add_argument(
+        "--early-stopping-min-delta",
+        type=float,
+        default=0.001,
+        help="Minimum improvement required to reset the early stopping counter."
+    )
+
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=300,
+        help="Number of validation epochs without improvement before stopping."
+    )
     parser.add_argument("--output-dir", type=str, default="./result/ldm")
+
     builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
@@ -190,7 +243,8 @@ def _main():
     torch.set_float32_matmul_precision('medium')
     ml_utils.set_seed()
 
-    dm = builder.from_argparse_args(args)
+    dm = builder.paired_from_argparse_args(args)
+    vae_encoder = dm.file_processor.pipelines[-1]
     dm.setup()
 
     print(ml_utils.format_header(60,"Dataset description"))
@@ -200,8 +254,6 @@ def _main():
     print(ml_utils.format_header(60,"Training"))
     print()
     print(dm.to_df())
-
-    dm.to_df().to_csv("./result/paired.csv")
 
     train_loader = dm.train_dataloader()
 
@@ -225,11 +277,12 @@ def _main():
 
     model = ml_model.LatentDiffusionModel(
         in_channels=latent_channels,
-        base_channels=128,
-        channel_ratios=[1, 2, 4],
-        num_res_blocks=2,
+        base_channels=args.base_channels,
+        channel_ratios=args.channel_ratios,
+        num_res_blocks=args.num_res_blocks,
         timesteps=args.ldm_steps,
-        lr=args.lr
+        lr=args.lr,
+        loss = ml_model.LDMLoss[args.loss.upper()]
     )
 
     callbacks = [
@@ -239,12 +292,12 @@ def _main():
             mode="min",
             save_top_k=1,
             save_last=True,
-            filename="ldm-{epoch:02d}"
+            filename="best"
         ),
         lightning_call.EarlyStopping(
             monitor="val/loss",
-            min_delta=0.001,
-            patience=100,
+            min_delta=args.early_stopping_min_delta,
+            patience=args.early_stopping_patience,
             verbose=True,
             mode="min"
         ),
