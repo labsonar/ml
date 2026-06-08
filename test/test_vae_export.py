@@ -28,6 +28,12 @@ def main():
     )
 
     parser.add_argument(
+        "--n_samples",
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
         "--output_dir",
         type=str,
         default="./result/vae_export"
@@ -64,6 +70,9 @@ def main():
         )
 
     for i, wav_path in enumerate(tqdm.tqdm(files)):
+
+        if i >= args.n_samples:
+            break
 
         waveform, fs = torchaudio.load(wav_path)
 

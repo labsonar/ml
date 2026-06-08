@@ -115,7 +115,7 @@ class DaviesBouldinIndex(SeparabilityMetric):
 
 class KNNConsistency(SeparabilityMetric):
 
-    def __init__(self, k: int = 5, metric: str = "euclidean"):
+    def __init__(self, k: int = 20, metric: str = "euclidean"):
         self.k = k
         self.metric = metric
 
