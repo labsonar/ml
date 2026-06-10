@@ -89,10 +89,17 @@ class PairedProcessedDataset(BaseProcessedDataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
 
-        x1 = self._load_fragment(row["id_fragment_1"])
-        x2 = self._load_fragment(row["id_fragment_2"])
+        y = row["Target"]
 
-        return x1, x2
+        fragment_cols = [c for c in row.index if c.startswith("id_fragment_")]
+        fragment_ids = row[fragment_cols].tolist()
+
+        data = []
+        for fragment_id in fragment_ids:
+            data.append(self._load_fragment(fragment_id))
+
+        return data, y
+
 
 class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     """ Basic DataModule for process and load audio datasets. """
@@ -107,7 +114,8 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
                  cv: ml_cv.CrossValidator = None,
                  transform=None,
                  id_column: str = "ID",
-                 target_column: str = "Target"):
+                 target_column: str = "Target",
+                 group_column: str | None = None):
         super().__init__()
         self.file_loader = file_loader
         self.file_processor = file_processor
@@ -118,6 +126,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         self.transform = transform
         self.id_column = id_column
         self.target_column = target_column
+        self.group_column = group_column or id_column
 
         self.file_ids = description_df[id_column].to_list()
         self.targets = description_df[target_column].to_list()
@@ -136,6 +145,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         return {
             "file_loader": self.file_loader.__get_hash_base__(),
             "file_processor": self.file_processor.__get_hash_base__(),
+            "group_column": self.group_column,
         }
 
     def prepare_data(self):
@@ -202,7 +212,38 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         df[self.target_column] = df["file_id"].map(id_to_target)
 
         self.dataframe = df
-        self.folds = self.cv.apply(self.file_ids, self.targets)
+
+        id_to_group = dict(zip(self.description_df[self.id_column],
+                               self.description_df[self.group_column]))
+
+        group_df = self.description_df.groupby(self.group_column).first().reset_index()
+        unique_groups = group_df[self.group_column].tolist()
+        group_targets = group_df[self.target_column].tolist()
+
+        group_folds = self.cv.apply(unique_groups, group_targets)
+
+        fold_records = {"file_id": self.file_ids}
+        self.folds = []
+
+        for idx, fold_map in enumerate(group_folds):
+            file_fold_map = {}
+            fold_column_roles = []
+
+            for file_id in self.file_ids:
+                group_val = id_to_group[file_id]
+                role = fold_map[group_val]
+                file_fold_map[file_id] = role
+
+                fold_column_roles.append(str(role))
+
+            self.folds.append(file_fold_map)
+
+            fold_records[f"fold_{idx}"] = fold_column_roles
+
+        folds_df = pd.DataFrame(fold_records)
+        folds_csv_path = os.path.join(self.processed_dir, "folds_mapping.csv")
+        folds_df.to_csv(folds_csv_path, index=False)
+
         self.set_fold(0)
 
     def set_fold(self, fold_idx: int):
@@ -343,22 +384,26 @@ class PairedAudioDataModule:
 
                 for _, row in df_pairs.iterrows():
 
-                    fid1 = row["file_id_1"]
-                    fid2 = row["file_id_2"]
+                    group_header = row.index[0]
+                    group_id = row[group_header]
 
-                    if fid1 not in grouped.groups or fid2 not in grouped.groups:
-                        continue
+                    n_scenarios = len(row) - 1
 
-                    df_a = grouped.get_group(fid1)
-                    df_b = grouped.get_group(fid2)
+                    dfs = []
+                    n_frags = []
+                    for i in range(n_scenarios):
+                        fid = row[f"file_id_{i}"]
+                        dfs.append(grouped.get_group(fid))
+                        n_frags.append(len(dfs[-1]))
 
-                    min_len = min(len(df_a), len(df_b))
-
-                    for k in range(min_len):
-                        pairs.append({
-                            "id_fragment_1": df_a.iloc[k]["id_fragment"],
-                            "id_fragment_2": df_b.iloc[k]["id_fragment"],
-                        })
+                    for k in range(min(n_frags)):
+                          pairs.append({
+                            group_header: group_id,
+                            **{
+                                f"id_fragment_{i}": df.iloc[k]["id_fragment"]
+                                for i, df in enumerate(dfs)
+                            }
+                          })
 
                 return pd.DataFrame(pairs)
 
@@ -377,6 +422,14 @@ class PairedAudioDataModule:
                 file_pairs = self.pair_builder(df_meta)
 
                 pairs_df = self._expand_file_pairs_to_fragments(file_pairs, df)
+
+                merge_key = pairs_df.columns[0]
+
+                pairs_df = pairs_df.merge(
+                    self.description_df[[merge_key, "Target"]].drop_duplicates(),
+                    on=merge_key,
+                    how="left"
+                )
 
                 return torch_data.DataLoader(
                     PairedProcessedDataset(

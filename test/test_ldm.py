@@ -97,7 +97,11 @@ class SampleReconstructionCallback(lightning.Callback):
         loader = dm.val_dataloader()
         batch = next(iter(loader))
 
-        x1, x2 = batch
+
+        data, _ = batch
+        x1 = data[0]
+        x2 = data[1]
+
         x1 = x1[:self.n_samples].to(device)
         x2 = x2[:self.n_samples].to(device)
 
@@ -257,19 +261,30 @@ def _main():
 
     train_loader = dm.train_dataloader()
 
-    x1, x2 = next(iter(train_loader))
+    x, y = next(iter(train_loader))
 
-    print("x1 shape:", x1.shape)
-    print("x2 shape:", x2.shape)
+    if isinstance(x, list):
+        print("x: ", len(x))
+        for i in x:
+            print("\ti: ", i.shape)
+
+        batch_size = x[0].shape[0]
+        latent_channels = x[0].shape[1]
+        latent_length = x[0].shape[2]
+
+    else:
+        print("x shape:", x.shape)
+        print("y shape:", y.shape)
+
+        batch_size = x.shape[0]
+        latent_channels = x.shape[1]
+        latent_length = x.shape[2]
 
     device = ml_device.get_available_device()
 
     # -------------------------
     # Infer latent dimensions
     # -------------------------
-    batch_size = x1.shape[0]
-    latent_channels = x1.shape[1]
-    latent_length = x1.shape[2]
 
     print("batch_size:", batch_size)
     print("latent_channels:", latent_channels)

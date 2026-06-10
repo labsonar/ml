@@ -172,6 +172,7 @@ class Iemanja(ml_core.AudioDataModule):
                  cv: ml_core.CrossValidator = None,
                  selection: ml_sel.Selector = None,
                  num_workers: int = None,
+                 group_column: str = "DYNAMIC_CATALOG_ID",
                  ):
 
         audio_dir = os.path.join(dataset_dir, "data")
@@ -202,15 +203,16 @@ class Iemanja(ml_core.AudioDataModule):
             num_workers=num_workers,
             cv=cv,
             transform=None,
+            group_column=group_column
         )
 
     def _get_params(self):
-        return {
-            "file_loader": self.file_loader.__get_hash_base__(),
-            "file_processor": self.file_processor.__get_hash_base__(),
+        params = super()._get_params()
+        params.update({
             "dynamic_selection": self.dynamic_selection.name,
             "channel_selection": self.channel_selection.name,
-        }
+        })
+        return params
 
 @ml_core.PairedAudioDataModule.register_pair_builder(Iemanja)
 def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
@@ -247,26 +249,25 @@ def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
 
     grouped = df_meta.groupby(["DYNAMIC_CATALOG_ID"])
 
-    for _, group in grouped:
+    for group_id, group in grouped:
 
         scen_ids = group["SCENARIO_CATALOG_ID"].unique()
 
-        if len(scen_ids) < 2:
-            continue
+        n_scenarios = len(scen_ids)
+        if n_scenarios < 2:
+              continue
 
-        scen_a = scen_ids[0]
-        scen_b = scen_ids[1]
+        dfs = []
+        n_frags = []
+        for i in range(n_scenarios):
+            dfs.append(group[group["SCENARIO_CATALOG_ID"] == scen_ids[i]])
+            n_frags.append(len(dfs[-1]))
 
-        df_a = group[group["SCENARIO_CATALOG_ID"] == scen_a]
-        df_b = group[group["SCENARIO_CATALOG_ID"] == scen_b]
-
-        min_len = min(len(df_a), len(df_b))
-
-        for k in range(min_len):
-            pairs.append({
-                "file_id_1": df_a.iloc[k]["ID"],
-                "file_id_2": df_b.iloc[k]["ID"],
-            })
+        for k in range(min(n_frags)):
+              pairs.append({
+                "DYNAMIC_CATALOG_ID": group_id[0],
+                **{f"file_id_{i}": df.iloc[k]["ID"] for i, df in enumerate(dfs)}
+              })
 
     return pd.DataFrame(pairs)
 
@@ -322,6 +323,16 @@ class IemanjaBuilder:
             help=(
                 "Column used as label target. "
                 "Examples: CLASS, CHANNEL, SHIP_TYPE."
+            )
+        )
+
+        group.add_argument(
+            "--ie-group-column",
+            type=str,
+            default="DYNAMIC_CATALOG_ID",
+            help=(
+                "Column used to separate cross-validation folds independently. "
+                "Examples: SHIP_TYPE, SCENARIO_TYPE. If default, splits by DYNAMIC_CATALOG_ID."
             )
         )
 
@@ -465,7 +476,7 @@ class IemanjaBuilder:
             batch_size=args.ie_batch_size,
             cv=ml_core.SimpleSplitCV(),
             selection=selection,
-            num_workers=args.ie_num_workers,
+            num_workers=args.ie_num_workers,group_column=args.ie_group_column,
         )
 
     def from_argparse_args(self,

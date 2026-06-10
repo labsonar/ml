@@ -80,7 +80,9 @@ class LatentDiffusionModel(lightning.LightningModule):
 
     def _shared_step(self, batch, stage: str):
 
-        x_cond, x_target = batch
+        data, _ = batch
+        x_cond = data[0]
+        x_target = data[1]
 
         batch_size = x_target.shape[0]
         device = x_target.device

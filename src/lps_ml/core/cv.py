@@ -170,9 +170,9 @@ class SimpleSplitCV(CrossValidator):
 
     def __init__(
         self,
-        train_size: float = 0.7,
+        train_size: float = 0.6,
         val_size: float = 0.2,
-        test_size: float = 0.1,
+        test_size: float = 0.2,
         stratify: bool = True,
     ):
         total = train_size + val_size + test_size
@@ -194,6 +194,11 @@ class SimpleSplitCV(CrossValidator):
         random_state: int = 42,
     ) -> typing.List[typing.Dict[int, FoldRole]]:
 
+        print("=-="*40)
+        print("random_state: ", random_state)
+        print("ids: ", ids)
+        print("=-="*40)
+
         ids = np.array(ids)
         targets = np.array(targets)
 
@@ -201,7 +206,6 @@ class SimpleSplitCV(CrossValidator):
 
         stratify_targets = targets if self.stratify else None
 
-        # Primeiro: separa TRAIN vs (VAL+TEST)
         train_idx, temp_idx = sk_selection.train_test_split(
             indices,
             test_size=(1.0 - self.train_size),
@@ -209,7 +213,6 @@ class SimpleSplitCV(CrossValidator):
             random_state=random_state,
         )
 
-        # Ajusta proporção relativa entre VAL e TEST dentro do restante
         val_ratio_relative = self.val_size / (self.val_size + self.test_size)
 
         stratify_temp = targets[temp_idx] if self.stratify else None

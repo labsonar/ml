@@ -53,15 +53,19 @@ def _main():
     parser = argparse.ArgumentParser(description="Train an MLP classifier on iara.")
     parser.add_argument("--max-epochs", type=int, default=200,
                         help="Maximum number of training epochs.")
-    parser.add_argument("--lr", type=float, default=1e-3,
-                        help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate.")
+    parser.add_argument("--only-info", action="store_true", help="Only print database info")
+    parser.add_argument("--paired", action="store_true", help="Only print database info")
     builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
 
     torch.set_float32_matmul_precision('medium')
     ml_utils.set_seed()
 
-    dm = builder.from_argparse_args(args)
+    if args.paired:
+        dm = builder.paired_from_argparse_args(args)
+    else:
+        dm = builder.from_argparse_args(args)
 
     print(ml_utils.format_header(60,"Dataset description"))
     print(dm.to_compile_df())
@@ -71,51 +75,68 @@ def _main():
     print()
     print(dm.to_df())
 
-    # dm.to_df().to_csv("./result/identified.csv")
+    if args.only_info:
+        dm.setup()
+        dm.num_workers = 0
+        dl = dm.train_dataloader()
+        for x, y in dl:
+            if isinstance(x, list):
+                print("x: ", len(x))
+                for i in x:
+                    print("\ti: ", i.shape)
+            else:
+                print("x: ", x.shape)
 
-    model = ml_model.MLP(
-        input_shape=dm.get_sample_shape(),
-        hidden_channels=[64, 16],
-        n_targets=dm.get_n_targets(),
-        dropout=0.2,
-        lr=1e-5
-    )
+            print("y: ", y.shape)
+            print(y)
+            break
 
-    checkpoint_cb = lightning_call.ModelCheckpoint(
-        monitor="val_loss",
-        save_top_k=1,
-        mode="min",
-        filename=f"iara-{{epoch:02d}}-{{val_loss:.3f}}",
-    )
-    early_stop_cb = lightning_call.EarlyStopping(monitor="val_loss", patience=4, mode="min")
+    else:
+        # dm.to_df().to_csv("./result/identified.csv")
 
-    logger = lightning_log.TensorBoardLogger(
-        "logs",
-        name="iara"
-    )
+        model = ml_model.MLP(
+            input_shape=dm.get_sample_shape(),
+            hidden_channels=[64, 16],
+            n_targets=dm.get_n_targets(),
+            dropout=0.2,
+            lr=1e-5
+        )
 
-    trainer = lightning.Trainer(
-        max_epochs=args.max_epochs,
-        accelerator="auto",
-        devices="auto",
-        logger=logger,
-        callbacks=[checkpoint_cb, early_stop_cb],
-    )
+        checkpoint_cb = lightning_call.ModelCheckpoint(
+            monitor="val_loss",
+            save_top_k=1,
+            mode="min",
+            filename=f"iara-{{epoch:02d}}-{{val_loss:.3f}}",
+        )
+        early_stop_cb = lightning_call.EarlyStopping(monitor="val_loss", patience=4, mode="min")
 
-    trainer.fit(model, dm)
-    trainer.test(model, datamodule=dm)
+        logger = lightning_log.TensorBoardLogger(
+            "logs",
+            name="iara"
+        )
 
-    train_acc = _evaluate_accuracy(model, dm.train_dataloader())
-    val_acc   = _evaluate_accuracy(model, dm.val_dataloader())
-    # test_acc  = _evaluate_accuracy(model, dm.test_dataloader())
+        trainer = lightning.Trainer(
+            max_epochs=args.max_epochs,
+            accelerator="auto",
+            devices="auto",
+            logger=logger,
+            callbacks=[checkpoint_cb, early_stop_cb],
+        )
 
-    print(ml_utils.format_header(60))
-    print()
-    print(ml_utils.format_header(60,"Results"))
-    print(f"Train accuracy:      {train_acc:.4f}")
-    print(f"Validation accuracy: {val_acc:.4f}")
-    # print(f"Test accuracy:       {test_acc:.4f}")
-    print(ml_utils.format_header(60))
+        trainer.fit(model, dm)
+        trainer.test(model, datamodule=dm)
+
+        train_acc = _evaluate_accuracy(model, dm.train_dataloader())
+        val_acc   = _evaluate_accuracy(model, dm.val_dataloader())
+        # test_acc  = _evaluate_accuracy(model, dm.test_dataloader())
+
+        print(ml_utils.format_header(60))
+        print()
+        print(ml_utils.format_header(60,"Results"))
+        print(f"Train accuracy:      {train_acc:.4f}")
+        print(f"Validation accuracy: {val_acc:.4f}")
+        # print(f"Test accuracy:       {test_acc:.4f}")
+        print(ml_utils.format_header(60))
 
 if __name__ == "__main__":
     _main()
