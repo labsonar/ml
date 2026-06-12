@@ -13,8 +13,8 @@ import torchaudio
 
 class AudioProcessor(abc.ABC):
     """
-    Classe base para transformar sinal [..., T] -> [..., F, T]
-    ou [..., F] se temporal_mean=True
+    Base class for transforming signal [..., T] -> [..., F, T]
+    or [..., F] if temporal_mean=True
     """
 
     def __init__(self,
@@ -76,7 +76,7 @@ class AudioProcessor(abc.ABC):
     @abc.abstractmethod
     def process(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Retorna [..., F, T]
+        Returns [..., F, T]
         """
         pass
 
@@ -144,7 +144,8 @@ class STFT(AudioProcessor):
             hop_length=self.stft_config.hop_length,
             win_length=self.stft_config.n_fft,
             window=window,
-            return_complex=True
+            return_complex=True,
+            normalized=True
         )
 
         spec = torch.abs(ret)
@@ -186,9 +187,13 @@ class Mel(AudioProcessor):
             f_max=int(mel_config.f_max.get_hz()) if mel_config.f_max is not None else None,
             power=1.0,
         )
+        self.on_device = False
 
     def process(self, x):
-        return self.mel.to(x.device)(x.squeeze(1))
+        if not self.on_device:
+            self.mel = self.mel.to(x.device)
+            self.on_device = True
+        return self.mel(x.squeeze(1))
 
 LofarConfig = STFTConfig
 class Lofar(STFT):
@@ -213,10 +218,16 @@ class Decimate:
 
         self.kernel = kernel.view(1, 1, -1)
 
+        self.on_device = False
+
     def forward(self, x):
+        if not self.on_device:
+            self.kernel = self.kernel.to(x.device)
+            self.on_device = True
+
         return torch.nn.functional.conv1d(
             x,
-            self.kernel.to(x.device),
+            self.kernel,
             stride=self.factor,
             padding=self.kernel.shape[-1] // 2
         )
@@ -237,14 +248,11 @@ class DiffBandpassFilter:
         if self.kernel_size % 2 == 0:
             self.kernel_size += 1
 
-        # Frequências normalizadas (Nyquist = 0.5)
         f_low = f_min / sample_rate
         f_high = f_max / sample_rate
 
         t = torch.arange(self.kernel_size) - (self.kernel_size - 1) / 2
 
-        # Resposta ao impulso de um filtro passa-baixa ideal: sinc(2*f*t)
-        # Passa-banda é a diferença entre dois passa-baixas
         h_high = 2 * f_high * torch.sinc(2 * f_high * t)
         h_low = 2 * f_low * torch.sinc(2 * f_low * t)
 
@@ -253,12 +261,15 @@ class DiffBandpassFilter:
         window = torch.hamming_window(self.kernel_size)
         kernel = kernel * window
 
-        # Registrar como buffer para que o PyTorch mova para GPU com o modelo
-        # mas não tente treinar esses coeficientes
         self.kernel = kernel.view(1, 1, -1)
 
+        self.on_device = False
+
     def forward(self, x):
-        # x: [Batch, 1, Time]
+        if not self.on_device:
+            self.kernel = self.kernel.to(x.device)
+            self.on_device = True
+
         padding = self.kernel_size // 2
         return torch.nn.functional.conv1d(
                 x,
@@ -314,11 +325,6 @@ class Demon(AudioProcessor):
         return AudioProcessor.soft_tpsw_norm(y)
 
 class MultiResolutionLoss:
-    """
-    Classe base (não usada diretamente).
-    Use:
-        MultiResolutionLoss[Processor](configs)
-    """
 
     def __init__(self,
                  processor_cls: typing.Type[AudioProcessor],

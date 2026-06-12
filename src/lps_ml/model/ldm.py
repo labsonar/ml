@@ -10,8 +10,9 @@ import lps_ml.model.blocks.unet as ml_unet
 class LDMLoss(enum.Enum):
     """ Loss functions for training the Latent Diffusion Model. """
     MSE = enum.auto()
+    L2 = enum.auto()
     HUBER = enum.auto()
-    L1 = enum.auto()
+    CHARBONNIER = enum.auto()
 
 class LatentDiffusionModel(lightning.LightningModule):
 
@@ -98,10 +99,15 @@ class LatentDiffusionModel(lightning.LightningModule):
 
         if self.loss == LDMLoss.MSE:
             loss = torch.nn.functional.mse_loss(noise_pred, noise)
+        elif self.loss == LDMLoss.L2:
+            loss = torch.mean(torch.sqrt(
+                torch.sum((noise_pred - noise) ** 2,
+                          dim=tuple(range(1, noise_pred.ndim)))
+            ))
         elif self.loss == LDMLoss.HUBER:
             loss = torch.nn.functional.smooth_l1_loss(noise_pred, noise)
-        elif self.loss == LDMLoss.L1:
-            loss = torch.nn.functional.l1_loss(noise_pred, noise)
+        elif self.loss == LDMLoss.CHARBONNIER:
+            loss = torch.mean(torch.sqrt((noise_pred - noise) ** 2 + 1e-3 ** 2))
         else:
             raise ValueError(f"Unsupported loss type: {self.loss}")
 

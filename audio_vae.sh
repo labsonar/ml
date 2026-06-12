@@ -1,9 +1,20 @@
 #!/bin/bash
+# time python scripts/train.py --config ./configs/cls_0.gin --db_path ./runs/dataset/ --out_path ./runs/models/test1 --name default --channels 1 --workers 1 --batch 32 --max_steps 300
 
-python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/* --output_dir ./result/cls_5/channel
-python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --models /data/models/cls_5/* --output_dir ./result/cls_5/ship
+python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/cls_5_1M1_95.ts --output_dir ./result/latent_test/all --export_umap
 
-python test/test_vae_export.py --models /data/models/cls_5/cls_5_best_9* --output_dir ./result/cls_5/test_audios/ /data/frags_ie_fix/
+python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/cls_5_1M1_95.ts --output_dir ./result/latent_test/train --export_umap --fold_role TRAIN
+
+python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/cls_5_1M1_95.ts --output_dir ./result/latent_test/val --export_umap --fold_role VALIDATION
+
+python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/cls_5_1M1_95.ts --output_dir ./result/latent_test/test --export_umap --fold_role TEST
+
+python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/cls_5_1M1_95.ts --output_dir ./result/latent_test/val_samples --export_umap --fold_role VALIDATION --latent_mode samples
+
+# python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls_5/* --output_dir ./result/cls_5/channel
+# python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --models /data/models/cls_5/* --output_dir ./result/cls_5/ship
+
+# python test/test_vae_export.py --models /data/models/cls_5/cls_5_best_9* --output_dir ./result/cls_5/test_audios/ /data/frags_ie_fix/
 
 
 # python test/test_audio_conv_vae.py --output_dir ./result/conv_vae/no_wu --max_epochs 200

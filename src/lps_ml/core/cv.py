@@ -194,11 +194,6 @@ class SimpleSplitCV(CrossValidator):
         random_state: int = 42,
     ) -> typing.List[typing.Dict[int, FoldRole]]:
 
-        print("=-="*40)
-        print("random_state: ", random_state)
-        print("ids: ", ids)
-        print("=-="*40)
-
         ids = np.array(ids)
         targets = np.array(targets)
 

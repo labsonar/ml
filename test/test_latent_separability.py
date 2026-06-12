@@ -20,7 +20,7 @@ import lps_ml.visualization.separability as ml_sep
 import lps_ml.utils.general as ml_utils
 import lps_ml.visualization.tsne as ml_vis
 
-def _extract_latent_and_labels(loader):
+def _extract_latent_and_labels(loader, latent_mode: str = "flatten"):
 
     all_data = []
     all_labels = []
@@ -37,7 +37,21 @@ def _extract_latent_and_labels(loader):
             y = y.detach().cpu().numpy()
 
         if x.ndim > 2:
-            x = x.reshape(x.shape[0], -1)
+
+            if latent_mode == "flatten":
+                x = x.reshape(x.shape[0], -1)
+
+            elif latent_mode == "samples":
+                B, D, T = x.shape
+
+                x = np.transpose(x, (0, 2, 1))
+                x = x.reshape(B * T, D)
+                y = np.repeat(y, T)
+
+            else:
+                raise ValueError(
+                    f"Unknown latent_mode: {latent_mode}"
+                )
 
         all_data.append(x)
         all_labels.append(y)
@@ -154,6 +168,42 @@ def _parse_model_specs(model_specs: list[str], default_compactness: int) -> typi
 
     return parsed
 
+def _get_loader_dict(dm, fold_role: str):
+
+    if fold_role is None:
+        return dm.all_dataloader_dict()
+
+    role = ml_cv.FoldRole[fold_role]
+
+    if role == ml_cv.FoldRole.TRAIN:
+        return dm.train_dataloader_dict()
+
+    if role == ml_cv.FoldRole.VALIDATION:
+        return dm.val_dataloader_dict()
+
+    if role == ml_cv.FoldRole.TEST:
+        return dm.test_dataloader_dict()
+
+    raise ValueError(f"Unsupported fold role: {fold_role}")
+
+def _get_loader(dm, fold_role: str):
+
+    if fold_role is None:
+        return dm.all_dataloader()
+
+    role = ml_cv.FoldRole[fold_role]
+
+    if role == ml_cv.FoldRole.TRAIN:
+        return dm.train_dataloader()
+
+    if role == ml_cv.FoldRole.VALIDATION:
+        return dm.val_dataloader()
+
+    if role == ml_cv.FoldRole.TEST:
+        return dm.test_dataloader()
+
+    raise ValueError(f"Unsupported fold role: {fold_role}")
+
 def main():
 
     builder = ml_db.IemanjaBuilder(vae_exclusive=True)
@@ -172,6 +222,12 @@ def main():
         nargs="+",
         default=["KNN"],
         choices=[m.name for m in ml_sep.Separability]
+    )
+    parser.add_argument("--fold_role", type=str, default=None,
+        choices=[f.name for f in ml_cv.FoldRole]
+    )
+    parser.add_argument("--latent_mode", type=str, default="flatten",
+        choices=["flatten", "samples"]
     )
     parser.add_argument("--output_dir", type=str, default="./result/latent_separability")
     builder.add_argparse_args(parser=parser)
@@ -196,7 +252,7 @@ def main():
             latent_dm.batch_size = 1
             latent_dm.num_workers = 0
             latent_dm.setup()
-            latent_dict_loader = latent_dm.all_dataloader_dict()
+            latent_dict_loader = _get_loader_dict(latent_dm, args.fold_role)
 
             latent_results[name] = ml_sep.SeparabilityMetric.compare_dataloaders(
                 latent_dict_loader[0],
@@ -204,10 +260,10 @@ def main():
                 metrics
             )
 
-            loader = latent_dm.all_dataloader()
+            loader = _get_loader(latent_dm, args.fold_role)
 
             print("model: ", name)
-            data, labels = _extract_latent_and_labels(loader)
+            data, labels = _extract_latent_and_labels(loader, latent_mode=args.latent_mode)
 
             aux_name = name.replace("/", "_")
             filename = os.path.join(output_dir, f"tsne_{aux_name}.png")
