@@ -205,9 +205,6 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
 
         df = pd.read_csv(self.csv_file)
 
-        valid_ids = set(self.file_ids)
-        df = df[df["file_id"].isin(valid_ids)].reset_index(drop=True)
-
         id_to_target = dict(zip(self.file_ids, self.targets))
         df[self.target_column] = df["file_id"].map(id_to_target)
 
@@ -278,7 +275,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             num_workers=self.num_workers
         )
 
-    def train_dataloader(self, shuffle: bool = True):
+    def train_dataloader(self, shuffle: bool = False):
         return self._build_dataloader(self.train_df, shuffle)
 
     def val_dataloader(self, shuffle: bool = False):

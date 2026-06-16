@@ -71,7 +71,7 @@ def main():
 
     for i, wav_path in enumerate(tqdm.tqdm(files)):
 
-        if i >= args.n_samples:
+        if args.n_samples is not None and i >= args.n_samples:
             break
 
         waveform, fs = torchaudio.load(wav_path)

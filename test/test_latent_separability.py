@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 import umap
+import random
 
 import torch
 import torch.utils.data as torch_data
@@ -71,6 +72,10 @@ def export_umap(
     min_dist: float = 0.1,
     metric: str = "euclidean"
 ):
+
+    seed = 42
+    np.random.seed(seed)
+    random.seed(seed)
 
     reducer = umap.UMAP(
         n_components=2,

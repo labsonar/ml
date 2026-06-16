@@ -474,7 +474,7 @@ class IemanjaBuilder:
             dynamic_selection=DynamicSelection[args.ie_dynamic_selection],
             channel_selection=ChannelSelection[args.ie_channel_selection],
             batch_size=args.ie_batch_size,
-            cv=ml_core.SimpleSplitCV(),
+            cv=ml_core.SimpleSplitCV(stratify=False),
             selection=selection,
             num_workers=args.ie_num_workers,group_column=args.ie_group_column,
         )
