@@ -111,10 +111,16 @@ def export_umap_projection(
 
 def main():
 
-    builder = ml_db.IemanjaBuilder(vae_exclusive=True)
+    builder = ml_db.IemanjaBuilder(ldm_exclusive=True)
 
     parser = argparse.ArgumentParser(
         description="Evaluate LDM latent reconstructions."
+    )
+
+    parser.add_argument(
+        "--tsne-samples",
+        type=int,
+        default=100
     )
 
     parser.add_argument(
@@ -189,9 +195,10 @@ def main():
 
         global_sample_id = 0
 
-        for _, batch in enumerate(val_loader):
+        for _, (batch, _) in enumerate(val_loader):
 
-            x_cond, x_target = batch
+            x_cond = batch[0]
+            x_target = batch[1]
             x_cond = x_cond.to(device)
             x_target = x_target.to(device)
 
@@ -367,51 +374,52 @@ def main():
 
 
                 # ### ========= t-SNE latent ========= ###
-                tsne_data = np.concatenate(
-                    [
-                        cond_points,
-                        target_points,
-                        generated_points
-                    ],
-                    axis=0
-                )
-
-                tsne_labels = np.concatenate(
-                    [
-                        np.full(cond_points.shape[0], "Conditioning"),
-                        np.full(target_points.shape[0], "Target"),
-                        np.full(generated_points.shape[0], "Generated"),
-                    ]
-                )
-
-                tsne_filename = os.path.join(
-                    tsne_dir,
-                    f"sample_{global_sample_id:06d}_tsne.png"
-                )
-
-                ml_vis.export_tsne(
-                    data=tsne_data,
-                    labels=tsne_labels,
-                    filename=tsne_filename
-                )
-
-                ### ========= UMAP latent ========= ###
-
-                if umap_model is not None:
-                    umap_filename = os.path.join(
-                        umap_dir,
-                        f"sample_{global_sample_id:06d}_umap.png"
+                if global_sample_id < args.tsne_samples:
+                    tsne_data = np.concatenate(
+                        [
+                            cond_points,
+                            target_points,
+                            generated_points
+                        ],
+                        axis=0
                     )
 
-                    export_umap_projection(
-                        reducer=umap_model,
-                        cond_points=cond_points.T.reshape(1, -1),
-                        target_points=target_points.T.reshape(1, -1),
-                        generated_points=generated_points.T.reshape(1, -1),
-                        filename=umap_filename
+                    tsne_labels = np.concatenate(
+                        [
+                            np.full(cond_points.shape[0], "Conditioning"),
+                            np.full(target_points.shape[0], "Target"),
+                            np.full(generated_points.shape[0], "Generated"),
+                        ]
                     )
 
-                global_sample_id += 1
+                    tsne_filename = os.path.join(
+                        tsne_dir,
+                        f"sample_{global_sample_id:06d}_tsne.png"
+                    )
+
+                    ml_vis.export_tsne(
+                        data=tsne_data,
+                        labels=tsne_labels,
+                        filename=tsne_filename
+                    )
+
+                    ### ========= UMAP latent ========= ###
+
+                    if umap_model is not None:
+                        umap_filename = os.path.join(
+                            umap_dir,
+                            f"sample_{global_sample_id:06d}_umap.png"
+                        )
+
+                        export_umap_projection(
+                            reducer=umap_model,
+                            cond_points=cond_points.T.reshape(1, -1),
+                            target_points=target_points.T.reshape(1, -1),
+                            generated_points=generated_points.T.reshape(1, -1),
+                            filename=umap_filename
+                        )
+
+                    global_sample_id += 1
 
     print("")
 

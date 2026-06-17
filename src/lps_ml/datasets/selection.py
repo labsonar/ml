@@ -292,6 +292,71 @@ class CombinationTarget(Target):
         return isinstance(other, CombinationTarget) and \
                self.columns == other.columns
 
+class ColumnTarget(Target):
+
+    def __init__(self,
+                 column: str,
+                 map_values: bool = True):
+
+        self.column = column
+        self.map_values = map_values
+
+        self._mapping: typing.Dict[typing.Any, int] = {}
+
+        super().__init__(n_targets=0, include_others=False)
+
+    def update_mapping(self, input_df: pd.DataFrame):
+
+        if not self.map_values:
+            return
+
+        if not self._mapping:
+            unique_values = pd.unique(input_df[self.column])
+
+            self._mapping = {
+                value: idx
+                for idx, value in enumerate(unique_values)
+            }
+
+            self.n_targets = len(self._mapping)
+
+    def label(self, input_df: pd.DataFrame) -> pd.DataFrame:
+
+        df = input_df.copy()
+
+        if self.map_values:
+
+            self.update_mapping(df)
+
+            df[self.DEFAULT_TARGET_HEADER] = (
+                df[self.column]
+                .map(self._mapping)
+            )
+
+            df = df.dropna(subset=[self.DEFAULT_TARGET_HEADER])
+
+            df[self.DEFAULT_TARGET_HEADER] = df[self.DEFAULT_TARGET_HEADER].astype(int)
+
+        else:
+
+            df[self.DEFAULT_TARGET_HEADER] = df[self.column]
+
+            df = df.dropna(subset=[self.DEFAULT_TARGET_HEADER])
+
+            if pd.api.types.is_integer_dtype(df[self.column]):
+                df[self.DEFAULT_TARGET_HEADER] = df[self.DEFAULT_TARGET_HEADER].astype(int)
+            else:
+                df[self.DEFAULT_TARGET_HEADER] = df[self.DEFAULT_TARGET_HEADER].astype(float)
+
+        return df
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, ColumnTarget)
+            and self.column == other.column
+            and self.map_values == other.map_values
+        )
+
 class Selector:
     """Class representing a filtered and labelled subset of data."""
 

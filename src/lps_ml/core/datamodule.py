@@ -60,7 +60,7 @@ class BaseProcessedDataset(torch_data.Dataset):
     def __len__(self):
         return len(self.df)
 
-    def _load_fragment(self, frag_id):
+    def _load_fragment(self, frag_id: int):
         path = os.path.join(self.processed_dir, f"{frag_id}.npy")
         x = np.load(path)
 
@@ -96,7 +96,7 @@ class PairedProcessedDataset(BaseProcessedDataset):
 
         data = []
         for fragment_id in fragment_ids:
-            data.append(self._load_fragment(fragment_id))
+            data.append(self._load_fragment(int(fragment_id)))
 
         return data, y
 
@@ -268,23 +268,28 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
     def _build_dataloader(self,
                           df: pd.DataFrame,
                           shuffle: bool) -> torch_data.DataLoader:
+
+        g = torch.Generator()
+        g.manual_seed(42)
+
         return torch_data.DataLoader(
             ProcessedDataset(df, self.processed_dir, self.transform),
             batch_size=self.batch_size,
             shuffle=shuffle,
+            generator=g,
             num_workers=self.num_workers
         )
 
-    def train_dataloader(self, shuffle: bool = False):
+    def train_dataloader(self, shuffle: bool = True):
         return self._build_dataloader(self.train_df, shuffle)
 
-    def val_dataloader(self, shuffle: bool = False):
+    def val_dataloader(self, shuffle: bool = True):
         return self._build_dataloader(self.val_df, shuffle)
 
-    def test_dataloader(self, shuffle: bool = False):
+    def test_dataloader(self, shuffle: bool = True):
         return self._build_dataloader(self.test_df, shuffle)
 
-    def all_dataloader(self, shuffle: bool = False):
+    def all_dataloader(self, shuffle: bool = True):
         return self._build_dataloader(self.dataframe, shuffle)
 
     def _dataloader_dict(self,
@@ -307,10 +312,14 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
                 self.transform
             )
 
+            g = torch.Generator()
+            g.manual_seed(42)
+
             loader = torch_data.DataLoader(
                 dataset,
                 batch_size=self.batch_size,
                 shuffle=shuffle,
+                generator=g,
                 num_workers=0,
             )
 
@@ -318,22 +327,22 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
 
         return loaders
 
-    def train_dataloader_dict(self, shuffle: bool = False) \
+    def train_dataloader_dict(self, shuffle: bool = True) \
                 -> typing.Dict[int, torch_data.DataLoader]:
         """ Returns a dictionary mapping target -> DataLoader. Using only train all data. """
         return self._dataloader_dict(self.train_df, shuffle=shuffle)
 
-    def val_dataloader_dict(self, shuffle: bool = False) \
+    def val_dataloader_dict(self, shuffle: bool = True) \
                 -> typing.Dict[int, torch_data.DataLoader]:
         """ Returns a dictionary mapping target -> DataLoader. Using only val all data. """
         return self._dataloader_dict(self.val_df, shuffle=shuffle)
 
-    def test_dataloader_dict(self, shuffle: bool = False) \
+    def test_dataloader_dict(self, shuffle: bool = True) \
                 -> typing.Dict[int, torch_data.DataLoader]:
         """ Returns a dictionary mapping target -> DataLoader. Using only test all data. """
         return self._dataloader_dict(self.test_df, shuffle=shuffle)
 
-    def all_dataloader_dict(self, shuffle: bool = False) \
+    def all_dataloader_dict(self, shuffle: bool = True) \
                 -> typing.Dict[int, torch_data.DataLoader]:
         """ Returns a dictionary mapping target -> DataLoader. For all data. """
         return self._dataloader_dict(self.dataframe, shuffle=shuffle)

@@ -7,6 +7,7 @@ import lps_ml.model.blocks.stack1d as lps_stack1d
 
 
 class EncoderBlock(torch.nn.Module):
+
     def __init__(
         self,
         in_channels,
@@ -16,11 +17,11 @@ class EncoderBlock(torch.nn.Module):
         stride,
         activation,
         norm,
-        time_embed_dim,
+        embed_dim,
     ):
         super().__init__()
 
-        self.film = lps_embedding.FiLM(time_embed_dim, in_channels)
+        self.film = lps_embedding.FiLM(embed_dim, in_channels)
 
         layers = []
         for _ in range(n_conv_layers):
@@ -46,13 +47,14 @@ class EncoderBlock(torch.nn.Module):
                 norm=norm,
             )
 
-    def forward(self, x, t_emb):
-        x = self.film(x, t_emb)
+    def forward(self, x: torch.Tensor, embedding: torch.Tensor):
+        x = self.film(x, embedding)
         skip = self.conv_block(x)
         y = self.down(skip)
         return y, skip
 
 class DecoderBlock(torch.nn.Module):
+
     def __init__(
         self,
         in_channels,
@@ -64,11 +66,11 @@ class DecoderBlock(torch.nn.Module):
         activation,
         norm,
         num_res_blocks,
-        time_embed_dim
+        embed_dim
     ):
         super().__init__()
 
-        self.film = lps_embedding.FiLM(time_embed_dim, out_channels + skip_channels)
+        self.film = lps_embedding.FiLM(embed_dim, out_channels + skip_channels)
 
         self.upsample = lps_conv1d.UpsamplingBlock(
             in_channels=in_channels,
@@ -102,10 +104,10 @@ class DecoderBlock(torch.nn.Module):
 
         self.conv_block = torch.nn.Sequential(*layers)
 
-    def forward(self, x, skip, t_emb):
+    def forward(self, x: torch.Tensor, skip: torch.Tensor, embedding: torch.Tensor):
         x = self.upsample(x)
         x = torch.cat([x, skip], dim=1)
-        x = self.film(x, t_emb)
+        x = self.film(x, embedding)
         x = self.conv_block(x)
         return x
 
@@ -122,12 +124,11 @@ class UNet1D(torch.nn.Module):
         activation: typing.Callable = torch.nn.LeakyReLU,
         norm: typing.Optional[typing.Callable] = torch.nn.BatchNorm1d,
         n_internal_convs: int = 3,
-        time_embed_dim: int = 128,
+        embed_dim: int = 128,
     ):
         super().__init__()
 
         self.input_proj = torch.nn.Conv1d(in_channels * 2, base_channels, kernel_size=1)
-        self.time_embeder = lps_embedding.SinusoidalPositionalEncoding(time_embed_dim)
 
         self.encoder = torch.nn.ModuleList()
 
@@ -147,7 +148,7 @@ class UNet1D(torch.nn.Module):
                     stride=stride,
                     activation=activation,
                     norm=norm,
-                    time_embed_dim=time_embed_dim
+                    embed_dim=embed_dim
                 )
             )
 
@@ -159,7 +160,7 @@ class UNet1D(torch.nn.Module):
             n_blocks=2 * num_res_blocks,
             activation=activation,
         )
-        self.temb_bottleneck = lps_embedding.FiLM(time_embed_dim, in_ch)
+        self.temb_bottleneck = lps_embedding.FiLM(embed_dim, in_ch)
 
         self.decoder = torch.nn.ModuleList()
 
@@ -177,7 +178,7 @@ class UNet1D(torch.nn.Module):
                     activation=activation,
                     num_res_blocks=num_res_blocks,
                     norm=norm,
-                    time_embed_dim=time_embed_dim
+                    embed_dim=embed_dim
                 )
             )
 
@@ -185,14 +186,11 @@ class UNet1D(torch.nn.Module):
 
         self.output_proj = torch.nn.Conv1d(base_channels, in_channels, kernel_size=1)
 
-    def forward(self, cond: torch.Tensor, target: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, cond: torch.Tensor, target: torch.Tensor, embedding: torch.Tensor) -> torch.Tensor:
 
         #print("cond:", cond.shape)
         #print("target:", target.shape)
         #print("t:", t.shape)
-
-        t_emb = self.time_embeder(t)
-
         #print("t_emb:", t_emb.shape)
 
         x = torch.cat([target, cond], dim=1)
@@ -204,14 +202,14 @@ class UNet1D(torch.nn.Module):
 
         #print("\n=== ENCODER ===")
         for i, block in enumerate(self.encoder):
-            x, skip = block(x, t_emb)
+            x, skip = block(x, embedding)
             #print(f"[ENC {i}] x: {x.shape} | skip: {skip.shape}")
             skips.append(skip)
 
         #print("\n=== BOTTLENECK ===")
         #print("before bottleneck:", x.shape)
 
-        x = self.temb_bottleneck(x, t_emb)
+        x = self.temb_bottleneck(x, embedding)
         x = self.bottleneck(x)
 
         #print("after bottleneck :", x.shape)
@@ -224,7 +222,7 @@ class UNet1D(torch.nn.Module):
             #print("x   :", x.shape)
             #print("skip:", skip.shape)
 
-            x = block(x, skip, t_emb)
+            x = block(x, skip, embedding)
 
             #print(f"[DEC {i}] AFTER")
             #print("x   :", x.shape)

@@ -176,7 +176,7 @@ class SampleReconstructionCallback(lightning.Callback):
 def _main():
     """Main function for the dataset info tables."""
 
-    builder = ml_db.IemanjaBuilder(vae_exclusive=True)
+    builder = ml_db.IemanjaBuilder(ldm_exclusive=True)
 
     parser = argparse.ArgumentParser(description="Train an LDM on simple_version of iemanja.")
     parser.add_argument("--ldm-steps", type=int, default=300, help="Denoising steps for LDM.")
@@ -200,6 +200,13 @@ def _main():
         nargs="+",
         default=[1, 2, 4],
         help="Channel multipliers for each U-Net level. Example: --channel-ratios 1 2 4 8"
+    )
+
+    parser.add_argument(
+        "--embed-dim",
+        type=int,
+        default=128,
+        help="Dimension of the conditioning embedding. Default 128"
     )
 
     parser.add_argument(
@@ -292,6 +299,7 @@ def _main():
 
     model = ml_model.LatentDiffusionModel(
         in_channels=latent_channels,
+        embed_dim=args.embed_dim,
         base_channels=args.base_channels,
         channel_ratios=args.channel_ratios,
         num_res_blocks=args.num_res_blocks,

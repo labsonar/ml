@@ -156,9 +156,9 @@ class Iemanja(ml_core.AudioDataModule):
         )
 
     @staticmethod
-    def build_column_as_target(target_column: str) -> ml_sel.Selector:
+    def build_column_as_target(target_column: str, map_values: bool = True) -> ml_sel.Selector:
         target_column = target_column.upper()
-        return ml_sel.Selector(ml_sel.CombinationTarget(columns=[target_column]))
+        return ml_sel.Selector(ml_sel.ColumnTarget(column=target_column, map_values=map_values))
 
     def __init__(self,
                  file_processor: ml_core.AudioProcessor,
@@ -275,9 +275,13 @@ IemanjaPaired = ml_core.PairedAudioDataModule[Iemanja]
 
 class IemanjaBuilder:
 
-    def __init__(self, vae_exclusive = False, time_exclusive = False) -> None:
-        self.vae_exclusive = vae_exclusive
+    def __init__(self,
+                 vae_exclusive: bool = False,
+                 time_exclusive: bool = False,
+                 ldm_exclusive: bool = False) -> None:
+        self.vae_exclusive = vae_exclusive or ldm_exclusive
         self.time_exclusive = time_exclusive
+        self.ldm_exclusive = ldm_exclusive
 
     def _add_dataset_args(self, parser: argparse.ArgumentParser):
 
@@ -316,31 +320,38 @@ class IemanjaBuilder:
             help="Channel selection"
         )
 
-        group.add_argument(
-            "--ie-target",
-            type=str,
-            default="CLASS",
-            help=(
-                "Column used as label target. "
-                "Examples: CLASS, CHANNEL, SHIP_TYPE."
+        if not self.ldm_exclusive:
+            group.add_argument(
+                "--ie-target",
+                type=str,
+                default="CLASS",
+                help=(
+                    "Column used as label target. "
+                    "Examples: CLASS, CHANNEL, SHIP_TYPE."
+                )
             )
-        )
 
-        group.add_argument(
-            "--ie-group-column",
-            type=str,
-            default="DYNAMIC_CATALOG_ID",
-            help=(
-                "Column used to separate cross-validation folds independently. "
-                "Examples: SHIP_TYPE, SCENARIO_TYPE. If default, splits by DYNAMIC_CATALOG_ID."
+            group.add_argument(
+                "--ie-raw-target-values",
+                action="store_true",
+                help="use column value as target instead of mapping to integers."
             )
-        )
 
-        group.add_argument(
-            "--ie-include-others",
-            action="store_true",
-            help="Create an additional target class for unmapped values."
-        )
+            group.add_argument(
+                "--ie-group-column",
+                type=str,
+                default="DYNAMIC_CATALOG_ID",
+                help=(
+                    "Column used to separate cross-validation folds independently. "
+                    "Examples: SHIP_TYPE, SCENARIO_TYPE. If default, splits by DYNAMIC_CATALOG_ID."
+                )
+            )
+
+            group.add_argument(
+                "--ie-include-others",
+                action="store_true",
+                help="Create an additional target class for unmapped values."
+            )
 
         group.add_argument("--ie-batch-size", type=int, default=32)
         group.add_argument("--ie-num-workers", type=int, default=1)
@@ -465,7 +476,16 @@ class IemanjaBuilder:
         file_processor = self._build_file_processor(args=args,
                                                    vae_model=vae_model,
                                                    compactness=compactness)
-        selection = Iemanja.build_column_as_target(target_column=args.ie_target)
+
+        if self.ldm_exclusive:
+            target_column = "SHORTEST_DIST_M"
+            map_values = False
+        else:
+            target_column = args.ie_target
+            map_values = not args.ie_raw_target_values
+
+        selection = Iemanja.build_column_as_target(target_column=target_column,
+                                                   map_values=map_values)
 
         return dict(
             file_processor=file_processor,

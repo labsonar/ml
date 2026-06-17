@@ -5,6 +5,7 @@ import math
 import torch
 import lightning
 
+import lps_ml.model.blocks.embedding as ml_emb
 import lps_ml.model.blocks.unet as ml_unet
 
 class LDMLoss(enum.Enum):
@@ -14,11 +15,19 @@ class LDMLoss(enum.Enum):
     HUBER = enum.auto()
     CHARBONNIER = enum.auto()
 
+class Condition(enum.Enum):
+    TIME = enum.auto()
+    DISTANCE = enum.auto()
+    INPUT_CHANNEL = enum.auto()
+    OUTPUT_CHANNEL = enum.auto()
+
 class LatentDiffusionModel(lightning.LightningModule):
 
     def __init__(
         self,
         in_channels: int,
+        embed_dim: int,
+        embedders: typing.Dict[str, ml_emb.Embedder] | None = None,
         base_channels: int = 128,
         channel_ratios: typing.List[int] = [1, 2, 4],
         num_res_blocks: int = 2,
@@ -27,7 +36,6 @@ class LatentDiffusionModel(lightning.LightningModule):
         activation: typing.Callable = torch.nn.LeakyReLU,
         norm: typing.Optional[typing.Callable] = torch.nn.BatchNorm1d,
         n_internal_convs: int = 3,
-        time_embed_dim: int = 128,
 
         timesteps: int = 1000,
         beta_start: float = 1e-4,
@@ -36,7 +44,17 @@ class LatentDiffusionModel(lightning.LightningModule):
         loss: LDMLoss = LDMLoss.MSE
     ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["embedders"])
+
+        if embedders is None:
+            embedders = {}
+
+        if Condition.TIME.name not in embedders:
+            embedders[Condition.TIME.name] = ml_emb.ContinuousSinusoidalEmbedder(
+                    embed_dim,
+                    max_value=timesteps)
+
+        conditioning_embedder = ml_emb.FusionEmbedder(embedders, embed_dim)
 
         self.unet = ml_unet.UNet1D(
             in_channels=in_channels,
@@ -48,9 +66,10 @@ class LatentDiffusionModel(lightning.LightningModule):
             activation=activation,
             norm=norm,
             n_internal_convs=n_internal_convs,
-            time_embed_dim=time_embed_dim,
+            embed_dim=conditioning_embedder.embed_dim,
         )
 
+        self.conditioning_embedder = conditioning_embedder
         self.timesteps = timesteps
         self.lr = lr
         self.loss = loss
@@ -73,11 +92,12 @@ class LatentDiffusionModel(lightning.LightningModule):
 
         return sqrt_alpha_hat * x0 + sqrt_one_minus_alpha_hat * noise
 
-    def forward(self, cond: torch.Tensor, target: torch.Tensor, t: torch.Tensor):
-        """
-        Predict noise ε
-        """
-        return self.unet(cond=cond, target=target, t=t)
+    def forward(self,
+                cond: torch.Tensor,
+                target: torch.Tensor,
+                conditions: typing.Dict[str, torch.Tensor]) -> torch.Tensor:
+        embedding = self.conditioning_embedder(conditions)
+        return self.unet(cond=cond, target=target, embedding=embedding)
 
     def _shared_step(self, batch, stage: str):
 
@@ -90,12 +110,19 @@ class LatentDiffusionModel(lightning.LightningModule):
 
         t = torch.randint(0, self.timesteps, (batch_size,), device=device)
 
+        conditions = {
+            Condition.TIME.name: t,
+            Condition.DISTANCE.name: torch.ones_like(t),
+            Condition.INPUT_CHANNEL.name: torch.zeros_like(t),
+            Condition.OUTPUT_CHANNEL.name: torch.ones_like(t),
+        }
+
         noise = torch.randn_like(x_target)
         x_noisy = self.q_sample(x_target, t, noise)
 
         noise_pred = self.forward(cond=x_cond,
                                   target=x_noisy,
-                                  t=t)
+                                  conditions=conditions)
 
         if self.loss == LDMLoss.MSE:
             loss = torch.nn.functional.mse_loss(noise_pred, noise)
@@ -124,16 +151,39 @@ class LatentDiffusionModel(lightning.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     @torch.no_grad()
-    def sample(self, cond):
+    def sample(self, cond: torch.Tensor, distance: float = 0, input_ch: int = 0, output_ch: int = 1):
 
         x = torch.randn(cond.shape, device=cond.device)
 
-        for t in reversed(range(self.timesteps)):
-            t_tensor = torch.full((x.shape[0],), t, device=x.device, dtype=torch.long)
+        conditions = {
+            Condition.DISTANCE.name: torch.full(
+                (x.shape[0],),
+                distance,
+                device=x.device,
+                dtype=torch.float32,
+            ),
+            Condition.INPUT_CHANNEL.name: torch.full(
+                (x.shape[0],),
+                input_ch,
+                device=x.device,
+                dtype=torch.long,
+            ),
+            Condition.OUTPUT_CHANNEL.name: torch.full(
+                (x.shape[0],),
+                output_ch,
+                device=x.device,
+                dtype=torch.long,
+            ),
+        }
 
-            noise_pred = self.unet(cond=cond,
-                                   target=x,
-                                   t=t_tensor)
+        for t in reversed(range(self.timesteps)):
+            t_tensor = torch.full((x.shape[0],), t, device=x.device, dtype=torch.float32)
+
+            conditions[Condition.TIME.name] = t_tensor
+
+            noise_pred = self(cond=cond,
+                              target=x,
+                              conditions=conditions)
 
             alpha = self.alphas[t]
             alpha_hat = self.alpha_hat[t]
