@@ -21,13 +21,22 @@ class Condition(enum.Enum):
     INPUT_CHANNEL = enum.auto()
     OUTPUT_CHANNEL = enum.auto()
 
+class ChannelMode(enum.Enum):
+    FIXED = enum.auto()
+    VARIABLE = enum.auto()
+
 class LatentDiffusionModel(lightning.LightningModule):
 
     def __init__(
         self,
         in_channels: int,
         embed_dim: int,
-        embedders: typing.Dict[str, ml_emb.Embedder] | None = None,
+        n_channels: int,
+        channel_mode: ChannelMode = ChannelMode.FIXED,
+        fixed_input_channel: int = 0,
+        fixed_output_channel: int = 1,
+        embeed_distance: bool = False,
+
         base_channels: int = 128,
         channel_ratios: typing.List[int] = [1, 2, 4],
         num_res_blocks: int = 2,
@@ -44,15 +53,31 @@ class LatentDiffusionModel(lightning.LightningModule):
         loss: LDMLoss = LDMLoss.MSE
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["embedders"])
+        self.save_hyperparameters()
 
-        if embedders is None:
-            embedders = {}
-
-        if Condition.TIME.name not in embedders:
-            embedders[Condition.TIME.name] = ml_emb.ContinuousSinusoidalEmbedder(
+        embedders : typing.Dict[str, ml_emb.Embedder] = {
+            Condition.TIME.name: ml_emb.ContinuousSinusoidalEmbedder(
                     embed_dim,
-                    max_value=timesteps)
+                    max_value=timesteps
+                )
+            }
+
+        if channel_mode == ChannelMode.VARIABLE:
+            embedders[Condition.INPUT_CHANNEL.name] = ml_emb.CategoricalEncoder(
+                    n_classes=n_channels,
+                    embed_dim=embed_dim,
+                )
+            embedders[Condition.OUTPUT_CHANNEL.name] = ml_emb.CategoricalEncoder(
+                    n_classes=n_channels,
+                    embed_dim=embed_dim,
+                )
+
+        if embeed_distance:
+            embedders[Condition.DISTANCE.name] = ml_emb.ContinuousSinusoidalEmbedder(
+                    embed_dim,
+                    min_value=50,
+                    max_value=150
+                )
 
         conditioning_embedder = ml_emb.FusionEmbedder(embedders, embed_dim)
 
@@ -68,6 +93,11 @@ class LatentDiffusionModel(lightning.LightningModule):
             n_internal_convs=n_internal_convs,
             embed_dim=conditioning_embedder.embed_dim,
         )
+
+        self.n_channels = n_channels
+        self.channel_mode = channel_mode
+        self.fixed_input_channel = fixed_input_channel
+        self.fixed_output_channel = fixed_output_channel
 
         self.conditioning_embedder = conditioning_embedder
         self.timesteps = timesteps
@@ -101,20 +131,32 @@ class LatentDiffusionModel(lightning.LightningModule):
 
     def _shared_step(self, batch, stage: str):
 
-        data, _ = batch
-        x_cond = data[0]
-        x_target = data[1]
+        data, target = batch
+        data = torch.stack(data, dim=1)
 
-        batch_size = x_target.shape[0]
-        device = x_target.device
+        batch_size = data.shape[0]
 
-        t = torch.randint(0, self.timesteps, (batch_size,), device=device)
+        if self.channel_mode == ChannelMode.FIXED:
+            in_ch = torch.full((batch_size,), self.fixed_input_channel, device=data.device)
+            out_ch = torch.full((batch_size,), self.fixed_output_channel, device=data.device)
+
+        else:
+            in_ch = torch.randint(0, self.n_channels, (batch_size,), device=data.device)
+            out_ch = torch.randint(0, self.n_channels - 1, (batch_size,), device=data.device)
+            out_ch += (out_ch >= in_ch)
+
+        batch_idx = torch.arange(batch_size, device=in_ch.device)
+
+        x_cond = data[batch_idx, in_ch]
+        x_target = data[batch_idx, out_ch]
+
+        t = torch.randint(0, self.timesteps, (batch_size,), device=data.device)
 
         conditions = {
-            Condition.TIME.name: t,
-            Condition.DISTANCE.name: torch.ones_like(t),
-            Condition.INPUT_CHANNEL.name: torch.zeros_like(t),
-            Condition.OUTPUT_CHANNEL.name: torch.ones_like(t),
+            Condition.TIME.name: t.float(),
+            Condition.DISTANCE.name: target.float(),
+            Condition.INPUT_CHANNEL.name: in_ch,
+            Condition.OUTPUT_CHANNEL.name: out_ch,
         }
 
         noise = torch.randn_like(x_target)
@@ -151,17 +193,11 @@ class LatentDiffusionModel(lightning.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     @torch.no_grad()
-    def sample(self, cond: torch.Tensor, distance: float = 0, input_ch: int = 0, output_ch: int = 1):
+    def sample(self, cond: torch.Tensor, distance: torch.Tensor | None = None, input_ch: int = 0, output_ch: int = 1):
 
         x = torch.randn(cond.shape, device=cond.device)
 
         conditions = {
-            Condition.DISTANCE.name: torch.full(
-                (x.shape[0],),
-                distance,
-                device=x.device,
-                dtype=torch.float32,
-            ),
             Condition.INPUT_CHANNEL.name: torch.full(
                 (x.shape[0],),
                 input_ch,
@@ -175,6 +211,10 @@ class LatentDiffusionModel(lightning.LightningModule):
                 dtype=torch.long,
             ),
         }
+
+        if distance is not None:
+            conditions[Condition.DISTANCE.name] = distance.float()
+
 
         for t in reversed(range(self.timesteps)):
             t_tensor = torch.full((x.shape[0],), t, device=x.device, dtype=torch.float32)

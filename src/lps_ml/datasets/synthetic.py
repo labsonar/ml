@@ -194,6 +194,7 @@ class Iemanja(ml_core.AudioDataModule):
 
         self.dynamic_selection = dynamic_selection
         self.channel_selection = channel_selection
+        self.n_channels = df["SCENARIO_CATALOG_ID"].nunique()
         super().__init__(
             file_loader=file_loader,
             file_processor=file_processor,
@@ -213,6 +214,9 @@ class Iemanja(ml_core.AudioDataModule):
             "channel_selection": self.channel_selection.name,
         })
         return params
+
+    def get_n_channels(self) -> int:
+        return self.n_channels
 
 @ml_core.PairedAudioDataModule.register_pair_builder(Iemanja)
 def iemenja_simple_file_pairs(df_meta: pd.DataFrame) -> pd.DataFrame:
@@ -337,21 +341,21 @@ class IemanjaBuilder:
                 help="use column value as target instead of mapping to integers."
             )
 
-            group.add_argument(
-                "--ie-group-column",
-                type=str,
-                default="DYNAMIC_CATALOG_ID",
-                help=(
-                    "Column used to separate cross-validation folds independently. "
-                    "Examples: SHIP_TYPE, SCENARIO_TYPE. If default, splits by DYNAMIC_CATALOG_ID."
-                )
+        group.add_argument(
+            "--ie-group-column",
+            type=str,
+            default="DYNAMIC_CATALOG_ID",
+            help=(
+                "Column used to separate cross-validation folds independently. "
+                "Examples: SHIP_TYPE, SCENARIO_TYPE. If default, splits by DYNAMIC_CATALOG_ID."
             )
+        )
 
-            group.add_argument(
-                "--ie-include-others",
-                action="store_true",
-                help="Create an additional target class for unmapped values."
-            )
+        group.add_argument(
+            "--ie-include-others",
+            action="store_true",
+            help="Create an additional target class for unmapped values."
+        )
 
         group.add_argument("--ie-batch-size", type=int, default=32)
         group.add_argument("--ie-num-workers", type=int, default=1)

@@ -13,11 +13,33 @@ python test/test_latent_extrapolation.py --ie-dataset-dir /data/iemanja_fixed/ -
 
 python test/test_latent_extrapolation.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --ie-latent-model /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/val_cross --fold_role VALIDATION --umap-model ./result/cls2_ch_no_demon/train/umap_cls2_ch_no_demon.pkl
 
-
-
 # python scripts/train.py --config ./configs/cls10.gin --db_path ./runs/dataset_channel/ --out_path ./runs/models/cls2_ch_no_demon --name cls2_ch_no_demon --channels 1 --workers 1 --batch 32 --max_steps 25000 --save_every 25000 --gpu 0
 
+# python test/test_ldm.py --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10
 
-python test/test_ldm.py --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10
+# python test/test_ldm_eval.py --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best-v1.ckpt
 
-python test/test_ldm_eval.py --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best-v1.ckpt
+
+
+
+python test/test_latent_separability.py  --ie-target "NAME_(US)" --models /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --export_umap --fold_role TRAIN
+
+python test/test_latent_extrapolation.py  --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --fold_role VALIDATION --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+
+
+
+python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+
+
+python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10 --fixed-input-channel 0 --fixed-output-channel 1
+
+
+python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --early-stopping-patience 10 --fixed-input-channel 1 --fixed-output-channel 0
+
+python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --ldm-checkpoint ./result/ldm_test/cls5/1-0/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+
+
+
+python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --early-stopping-patience 10 --channel-mode VARIABLE
+
+python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --ldm-checkpoint "./result/ldm_cls_5_5M_95/variable_dist/best.ckpt" --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl

@@ -120,7 +120,7 @@ def main():
     parser.add_argument(
         "--tsne-samples",
         type=int,
-        default=100
+        default=20
     )
 
     parser.add_argument(
@@ -144,14 +144,7 @@ def main():
 
     builder.add_argparse_args(parser=parser)
     args = parser.parse_args()
-
-    psd_dir = os.path.join(args.output_dir, "psd")
-    tsne_dir = os.path.join(args.output_dir, "tsne")
-    umap_dir = os.path.join(args.output_dir, "umap")
     os.makedirs(args.output_dir, exist_ok=True)
-    os.makedirs(psd_dir, exist_ok=True)
-    os.makedirs(tsne_dir, exist_ok=True)
-    os.makedirs(umap_dir, exist_ok=True)
 
     torch.set_float32_matmul_precision("medium")
     ml_utils.set_seed()
@@ -174,6 +167,22 @@ def main():
     model.eval()
     model.to(device)
 
+    if model.channel_mode == ml_model.ChannelMode.FIXED:
+        channel_pairs = [
+            (
+                model.fixed_input_channel,
+                model.fixed_output_channel
+            )
+        ]
+
+    else:
+        channel_pairs = [
+            (i, j)
+            for i in range(model.n_channels)
+            for j in range(model.n_channels)
+            if i != j
+        ]
+
     metrics = collections.defaultdict(list)
 
     umap_model = None
@@ -181,245 +190,164 @@ def main():
         with open(args.umap_model, "rb") as f:
             umap_model = pickle.load(f)
 
-    all_latent = []
-    all_psd = []
-    all_labels = []
-
-    all_cond_latent = []
-    all_target_latent = []
-    all_generated_latent = []
-
-    sample_metrics = []
-
     with torch.no_grad():
 
-        global_sample_id = 0
+        for in_ch, out_ch in channel_pairs:
 
-        for _, (batch, _) in enumerate(val_loader):
+            pair_name = f"{in_ch}->{out_ch}"
 
-            x_cond = batch[0]
-            x_target = batch[1]
-            x_cond = x_cond.to(device)
-            x_target = x_target.to(device)
+            all_cond_latent = []
+            all_target_latent = []
+            all_generated_latent = []
+            sample_metrics = []
 
-            x_generated = model.sample(cond=x_cond)
+            if len(channel_pairs) == 1:
+                psd_dir = os.path.join(args.output_dir, "psd")
+                tsne_dir = os.path.join(args.output_dir, "tsne")
+                umap_dir = os.path.join(args.output_dir, "umap")
+                os.makedirs(psd_dir, exist_ok=True)
+                os.makedirs(tsne_dir, exist_ok=True)
+                os.makedirs(umap_dir, exist_ok=True)
+            else:
+                psd_dir = os.path.join(args.output_dir, "psd", pair_name)
+                tsne_dir = os.path.join(args.output_dir, "tsne", pair_name)
+                umap_dir = os.path.join(args.output_dir, "umap", pair_name)
+                umaps_dir = os.path.join(args.output_dir, "umaps")
+                os.makedirs(psd_dir, exist_ok=True)
+                os.makedirs(tsne_dir, exist_ok=True)
+                os.makedirs(umap_dir, exist_ok=True)
+                os.makedirs(umaps_dir, exist_ok=True)
 
-            t_cond = vae_encoder.decode(x_cond)
-            t_target = vae_encoder.decode(x_target)
-            t_generated = vae_encoder.decode(x_generated)
+            global_sample_id = 0
 
-            for i in range(x_cond.shape[0]):
+            for _, (batch, target) in enumerate(val_loader):
 
-                cond_points = x_cond[i].detach().cpu().numpy().T
-                target_points = x_target[i].detach().cpu().numpy().T
-                generated_points = x_generated[i].detach().cpu().numpy().T
+                x_cond = batch[in_ch]
+                x_target = batch[out_ch]
 
-                all_cond_latent.append(cond_points.T.reshape(-1))
-                all_target_latent.append(target_points.T.reshape(-1))
-                all_generated_latent.append(generated_points.T.reshape(-1))
+                x_cond = x_cond.to(device)
+                x_target = x_target.to(device)
+                target = target.to(device)
 
-                t_cond_points = t_cond[i].detach().cpu().numpy()
-                t_target_points = t_target[i].detach().cpu().numpy()
-                t_generated_points = t_generated[i].detach().cpu().numpy()
+                x_generated = model.sample(cond=x_cond,
+                                           distance=target,
+                                           input_ch=in_ch,
+                                           output_ch=out_ch)
 
-                # _, psd_cond = lps_bb.psd(t_cond_points, fs, window_size=4096, overlap=0.5)
-                # _, psd_target = lps_bb.psd(t_target_points, fs, window_size=4096, overlap=0.5)
-                # _, psd_generated = lps_bb.psd(t_generated_points, fs, window_size=4096, overlap=0.5)
+                for i in range(x_cond.shape[0]):
 
-                # all_latent.append(cond_points.reshape(-1))
-                # all_psd.append(psd_cond)
-                # all_labels.append("Conditioning")
+                    cond_points = x_cond[i].detach().cpu().numpy().T
+                    target_points = x_target[i].detach().cpu().numpy().T
+                    generated_points = x_generated[i].detach().cpu().numpy().T
 
-                # all_latent.append(target_points.reshape(-1))
-                # all_psd.append(psd_target)
-                # all_labels.append("Target")
+                    all_cond_latent.append(cond_points.T.reshape(-1))
+                    all_target_latent.append(target_points.T.reshape(-1))
+                    all_generated_latent.append(generated_points.T.reshape(-1))
 
-                # all_latent.append(generated_points.reshape(-1))
-                # all_psd.append(psd_generated)
-                # all_labels.append("Generated")
+                    ## ========= FID ========= ###
+                    fid_cg = latent_fid(cond_points, generated_points)
+                    fid_tg = latent_fid(target_points, generated_points)
+                    fid_ct = latent_fid(target_points, cond_points)
 
-                n_components=1
-                pca_cond = skl_dec.PCA(n_components=n_components).fit(cond_points).components_
-                pca_target = skl_dec.PCA(n_components=n_components).fit(target_points).components_
-                pca_generated = skl_dec.PCA(n_components=n_components).fit(generated_points).components_
+                    fid_align = 1 - fid_tg/fid_ct
+                    fid_prox = fid_cg/fid_tg
 
-                # ### ========= Plot PSDs ========= ###
-                # lps_bb.plot_psds(
-                #     filename=os.path.join(psd_dir, f"psd_{global_sample_id:06d}.png"),
-                #     fs=fs,
-                #     noises=[t_cond_points, t_target_points, t_generated_points],
-                #     labels=["Conditioning", "Target", "Generated"],
-                #     window_size=4096,
-                #     overlap=0.5
-                # )
+                    metrics[f"{pair_name}/fid_cg"].append(fid_cg)
+                    metrics[f"{pair_name}/fid_tg"].append(fid_tg)
+                    metrics[f"{pair_name}/fid_ct"].append(fid_ct)
+                    metrics[f"{pair_name}/fid_align"].append(fid_align)
+                    metrics[f"{pair_name}/fid_prox"].append(fid_prox)
 
-                # ### ========= MSE ========= ###
-                # latent_dist_cg = mse_similarity(cond_points, generated_points)
-                # latent_dist_tg = mse_similarity(target_points, generated_points)
-                # latent_dist_ct = mse_similarity(target_points, cond_points)
+                    sample_metrics.append({
+                        "global_id": global_sample_id,
+                        "ord": fid_prox,
+                    })
 
-                # latent_dist_align = 1 - latent_dist_tg/latent_dist_ct
-                # latent_dist_prox = latent_dist_cg/latent_dist_tg
+                    # ### ========= Transform cosine similarity ========= ###
+                    delta_ct = target_points - cond_points
+                    delta_cg = generated_points - cond_points
 
-                # metrics["latent_dist_cg"].append(latent_dist_cg)
-                # metrics["latent_dist_tg"].append(latent_dist_tg)
-                # metrics["latent_dist_ct"].append(latent_dist_ct)
-                # metrics["latent_dist_align"].append(latent_dist_align)
-                # metrics["latent_dist_prox"].append(latent_dist_prox)
+                    transform_cos = np.mean([
+                        1 - sci_dist.cosine(a, b) for a, b in zip(delta_ct, delta_cg)
+                    ])
+                    metrics[f"{pair_name}/transform_cos"].append(transform_cos)
+                    metrics[f"{pair_name}/transform_angle"].append(np.degrees(np.arccos(transform_cos)))
 
-                ## ========= FID ========= ###
-                fid_cg = latent_fid(cond_points, generated_points)
-                fid_tg = latent_fid(target_points, generated_points)
-                fid_ct = latent_fid(target_points, cond_points)
+                    sample_metrics.append({
+                        "global_id": global_sample_id,
+                        "ord": transform_cos,
+                    })
 
-                fid_align = 1 - fid_tg/fid_ct
-                fid_prox = fid_cg/fid_tg
-
-                metrics["fid_cg"].append(fid_cg)
-                metrics["fid_tg"].append(fid_tg)
-                metrics["fid_ct"].append(fid_ct)
-                metrics["fid_align"].append(fid_align)
-                metrics["fid_prox"].append(fid_prox)
-
-                sample_metrics.append({
-                    "global_id": global_sample_id,
-                    "ord": fid_prox,
-                })
-
-                # ## ========= Wassertein ========= ###
-                # wass_cg = wasserstein(cond_points, generated_points)
-                # wass_tg = wasserstein(target_points, generated_points)
-                # wass_ct = wasserstein(target_points, cond_points)
-
-                # wass_align = 1 - wass_tg/wass_ct
-                # wass_prox = wass_cg/wass_tg
-
-                # metrics["wass_cg"].append(wass_cg)
-                # metrics["wass_tg"].append(wass_tg)
-                # metrics["wass_ct"].append(wass_ct)
-                # metrics["wass_align"].append(wass_align)
-                # metrics["wass_prox"].append(wass_prox)
-
-                ## ========= PCA  ========= ###
-                # pca_cg = np.mean(np.cos(sci_alg.subspace_angles(pca_cond.T, pca_generated.T)))
-                # pca_tg = np.mean(np.cos(sci_alg.subspace_angles(pca_target.T, pca_generated.T)))
-                # pca_ct = np.mean(np.cos(sci_alg.subspace_angles(pca_cond.T, pca_target.T)))
-
-                # pca_align = 1 - pca_tg/pca_ct
-                # pca_prox = pca_cg/pca_tg
-
-                # metrics["pca_cg"].append(pca_cg)
-                # metrics["pca_tg"].append(pca_tg)
-                # metrics["pca_ct"].append(pca_ct)
-                # metrics["pca_align"].append(pca_align)
-                # metrics["pca_prox"].append(pca_prox)
-
-                # # ========= PSD MSE ========= ###
-                # psd_dist_cg = mse_similarity(psd_cond, psd_generated)
-                # psd_dist_tg = mse_similarity(psd_target, psd_generated)
-                # psd_dist_ct = mse_similarity(psd_target, psd_cond)
-
-                # psd_dist_align = 1 - psd_dist_tg/psd_dist_ct
-                # psd_dist_prox = psd_dist_cg/psd_dist_tg
-
-                # metrics["psd_dist_cg"].append(psd_dist_cg)
-                # metrics["psd_dist_tg"].append(psd_dist_tg)
-                # metrics["psd_dist_ct"].append(psd_dist_ct)
-                # metrics["psd_dist_align"].append(psd_dist_align)
-                # metrics["psd_dist_prox"].append(psd_dist_prox)
-
-
-                # ### ========= PSD Corr ========= ###
-                # psd_corr_cg = np.corrcoef(psd_cond, psd_generated)[0,1]
-                # psd_corr_tg = np.corrcoef(psd_target, psd_generated)[0,1]
-                # psd_corr_ct = np.corrcoef(psd_cond, psd_target)[0,1]
-
-                # psd_corr_align = 1 - psd_corr_tg/psd_corr_ct
-                # psd_corr_prox = psd_corr_cg/psd_corr_tg
-
-                # metrics["psd_corr_cg"].append(psd_corr_cg)
-                # metrics["psd_corr_tg"].append(psd_corr_tg)
-                # metrics["psd_corr_ct"].append(psd_corr_ct)
-                # metrics["psd_corr_align"].append(psd_corr_align)
-                # metrics["psd_corr_prox"].append(psd_corr_prox)
-
-                # ### ========= PSD cosine dist ========= ###
-                # psd_dcos_cg = sci_dist.cosine(psd_cond, psd_generated)
-                # psd_dcos_tg = sci_dist.cosine(psd_target, psd_generated)
-                # psd_dcos_ct = sci_dist.cosine(psd_cond, psd_target)
-
-                # psd_dcos_align = 1 - psd_dcos_tg/psd_dcos_ct
-                # psd_dcos_prox = psd_dcos_cg/psd_dcos_tg
-
-                # metrics["psd_dcos_cg"].append(psd_dcos_cg)
-                # metrics["psd_dcos_tg"].append(psd_dcos_tg)
-                # metrics["psd_dcos_ct"].append(psd_dcos_ct)
-                # metrics["psd_dcos_align"].append(psd_dcos_align)
-                # metrics["psd_dcos_prox"].append(psd_dcos_prox)
-
-
-                # ### ========= Transform cosine similarity ========= ###
-                delta_ct = target_points - cond_points
-                delta_cg = generated_points - cond_points
-
-                transform_cos = np.mean([
-                    1 - sci_dist.cosine(a, b) for a, b in zip(delta_ct, delta_cg)
-                ])
-                metrics["transform_cos"].append(transform_cos)
-
-                sample_metrics.append({
-                    "global_id": global_sample_id,
-                    "ord": transform_cos,
-                })
-
-
-                # ### ========= t-SNE latent ========= ###
-                if global_sample_id < args.tsne_samples:
-                    tsne_data = np.concatenate(
-                        [
-                            cond_points,
-                            target_points,
-                            generated_points
-                        ],
-                        axis=0
-                    )
-
-                    tsne_labels = np.concatenate(
-                        [
-                            np.full(cond_points.shape[0], "Conditioning"),
-                            np.full(target_points.shape[0], "Target"),
-                            np.full(generated_points.shape[0], "Generated"),
-                        ]
-                    )
-
-                    tsne_filename = os.path.join(
-                        tsne_dir,
-                        f"sample_{global_sample_id:06d}_tsne.png"
-                    )
-
-                    ml_vis.export_tsne(
-                        data=tsne_data,
-                        labels=tsne_labels,
-                        filename=tsne_filename
-                    )
-
-                    ### ========= UMAP latent ========= ###
-
-                    if umap_model is not None:
-                        umap_filename = os.path.join(
-                            umap_dir,
-                            f"sample_{global_sample_id:06d}_umap.png"
+                    # ### ========= t-SNE latent ========= ###
+                    if global_sample_id < args.tsne_samples:
+                        tsne_data = np.concatenate(
+                            [
+                                cond_points,
+                                target_points,
+                                generated_points
+                            ],
+                            axis=0
                         )
 
-                        export_umap_projection(
-                            reducer=umap_model,
-                            cond_points=cond_points.T.reshape(1, -1),
-                            target_points=target_points.T.reshape(1, -1),
-                            generated_points=generated_points.T.reshape(1, -1),
-                            filename=umap_filename
+                        tsne_labels = np.concatenate(
+                            [
+                                np.full(cond_points.shape[0], "Conditioning"),
+                                np.full(target_points.shape[0], "Target"),
+                                np.full(generated_points.shape[0], "Generated"),
+                            ]
                         )
 
-                    global_sample_id += 1
+                        tsne_filename = os.path.join(
+                            tsne_dir,
+                            f"sample_{global_sample_id:06d}_tsne.png"
+                        )
+
+                        ml_vis.export_tsne(
+                            data=tsne_data,
+                            labels=tsne_labels,
+                            filename=tsne_filename
+                        )
+
+                        ### ========= UMAP latent ========= ###
+
+                        if umap_model is not None:
+                            umap_filename = os.path.join(
+                                umap_dir,
+                                f"sample_{global_sample_id:06d}_umap.png"
+                            )
+
+                            export_umap_projection(
+                                reducer=umap_model,
+                                cond_points=cond_points.T.reshape(1, -1),
+                                target_points=target_points.T.reshape(1, -1),
+                                generated_points=generated_points.T.reshape(1, -1),
+                                filename=umap_filename
+                            )
+
+                        global_sample_id += 1
+
+
+            if umap_model is not None:
+
+                all_cond_latent = np.asarray(all_cond_latent)
+                all_target_latent = np.asarray(all_target_latent)
+                all_generated_latent = np.asarray(all_generated_latent)
+
+                print("all_cond_latent: ", all_cond_latent.shape)
+
+                umap_filename = os.path.join(umap_dir, "complete.png")
+
+                export_umap_projection(
+                    reducer=umap_model,
+                    cond_points=all_cond_latent,
+                    target_points=all_target_latent,
+                    generated_points=all_generated_latent,
+                    filename=umap_filename
+                )
+
+                if len(channel_pairs) > 1:
+                    shutil.copy(umap_filename, os.path.join(umaps_dir, f"{pair_name}.png"))
+
 
     print("")
 
@@ -445,60 +373,6 @@ def main():
 
     df.to_csv(os.path.join(args.output_dir, "metrics_summary.csv"), index=False)
 
-    if umap_model is not None:
-
-        all_cond_latent = np.asarray(all_cond_latent)
-        all_target_latent = np.asarray(all_target_latent)
-        all_generated_latent = np.asarray(all_generated_latent)
-
-        print("all_cond_latent: ", all_cond_latent.shape)
-
-        umap_filename = os.path.join(umap_dir, "complete.png")
-
-        export_umap_projection(
-            reducer=umap_model,
-            cond_points=all_cond_latent,
-            target_points=all_target_latent,
-            generated_points=all_generated_latent,
-            filename=umap_filename
-        )
-
-
-
-    # all_latent = np.asarray(all_latent)
-    # all_psd = np.asarray(all_psd)
-    # all_labels = np.asarray(all_labels)
-
-    # ml_vis.export_tsne(
-    #     data=all_psd,
-    #     labels=all_labels,
-    #     filename=os.path.join(args.output_dir, "tsne_psd.png")
-    # )
-    # ml_vis.export_tsne(
-    #     data=all_latent,
-    #     labels=all_labels,
-    #     filename=os.path.join(args.output_dir, "tsne_latent.png")
-    # )
-
-    # sample_metrics_sorted = sorted(
-    #     sample_metrics,
-    #     key=lambda x: x["ord"],
-    #     reverse=True
-    # )
-
-    # ordered_dir = os.path.join(args.output_dir, "ordered")
-    # os.makedirs(ordered_dir, exist_ok=True)
-
-    # for i, item in enumerate(sample_metrics_sorted):
-
-    #     global_id = item["global_id"]
-    #     ord = item["ord"]
-
-    #     # in_filename = os.path.join(tsne_dir, f"sample_{global_id:06d}_tsne.png")
-    #     in_filename = os.path.join(psd_dir, f"psd_{global_id:06d}.png")
-    #     out_filename = os.path.join(ordered_dir, f"{i}_{ord}_{global_id:06d}.png")
-
-    #     shutil.copy2(in_filename, out_filename)
 
 if __name__ == "__main__":
     main()
