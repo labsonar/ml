@@ -24,8 +24,12 @@ def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str) -> None:
     unique_labels = np.unique(labels)
     for label in unique_labels:
         indices = np.where(labels == label)
-        plt.scatter(tsne_data[indices, 0], tsne_data[indices, 1],
-                    label=str(label), cmap='jet', s=10)
+        plt.scatter(tsne_data[indices, 0],
+                    tsne_data[indices, 1],
+                    label=str(label),
+                    alpha=0.5,
+                    cmap='jet',
+                    s=10)
 
     plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
     plt.xlabel('Dimension 1')

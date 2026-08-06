@@ -92,6 +92,7 @@ def main():
 
     parser.add_argument("--wav", default=None)
     parser.add_argument("--output_dir", default="./result/umap_projection")
+    parser.add_argument("--output_filename", default="umap_projection")
 
     builder.add_argparse_args(parser)
     args = parser.parse_args()
@@ -188,7 +189,7 @@ def main():
 
     fig_file = os.path.join(
         args.output_dir,
-        "umap_projection.png"
+        f"{args.output_filename}.png"
     )
 
     plt.savefig(fig_file, dpi=300)

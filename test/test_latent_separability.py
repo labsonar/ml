@@ -108,7 +108,7 @@ def export_umap(
             embedding[mask, 0],
             embedding[mask, 1],
             s=8,
-            alpha=0.7,
+            alpha=0.5,
             label=str(label)
         )
 

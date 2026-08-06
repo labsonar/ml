@@ -48,7 +48,7 @@ def _evaluate_accuracy(model: torch.nn.Module,
 def _main():
     """Main function for the dataset info tables."""
 
-    builder = ml_db.IemanjaBuilder(ldm_exclusive=True)
+    builder = ml_db.IemanjaBuilder()
 
     parser = argparse.ArgumentParser(description="Train an MLP classifier on iara.")
     parser.add_argument("--max-epochs", type=int, default=200,
