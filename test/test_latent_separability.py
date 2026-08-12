@@ -9,6 +9,7 @@ import seaborn as sns
 import pickle
 import umap
 import random
+import sklearn.manifold as sk_manifold
 
 import torch
 import torch.utils.data as torch_data
@@ -117,7 +118,7 @@ def export_umap(
     plt.savefig(filename, dpi=300)
     plt.close()
 
-    return reducer
+    return reducer, embedding
 
 def _save_metric_heatmaps(df, output_dir):
 
@@ -287,7 +288,7 @@ def main():
                 umap_model = os.path.join(output_dir, f"umap_{aux_name}.pkl")
                 umap_embedding = os.path.join(output_dir, f"umap_{aux_name}.npz")
 
-                export_umap(
+                _, embedding = export_umap(
                     data=data,
                     labels=labels,
                     filename=umap_plot,
@@ -295,6 +296,19 @@ def main():
                     embedding_filename=umap_embedding,
                     metric="cosine"
                 )
+
+                knn_metric = ml_sep.KNNConsistency(k=20)
+                knn_umap = knn_metric.compute(embedding, labels)
+
+                latent_results[name]["KNN_UMAP"] = knn_umap
+
+                trust = sk_manifold.trustworthiness(
+                    X=data,
+                    X_embedded=embedding,
+                    n_neighbors=20
+                )
+
+                latent_results[name]["Trustworthiness"] = trust
 
                 print(f"Saved UMAP: {umap_plot}")
 

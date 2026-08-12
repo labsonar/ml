@@ -144,7 +144,6 @@ class Target(abc.ABC):
         """Name of the target column to use when grouping results."""
         return self.DEFAULT_TARGET_HEADER
 
-
 class ConstraintTarget(Target):
     """Target generator based on a list of constraint groups."""
 
@@ -210,14 +209,12 @@ class ConstraintTarget(Target):
                self.constraints == other.constraints and \
                self.include_others == other.include_others
 
-
 class LabelTarget(ConstraintTarget):
     """Simplified target assigning labels based on column values."""
 
     def __init__(self, column: str, values: typing.List[str], include_others: bool = False):
         constraints = [[Constraint(header=column, values=[v])] for v in values]
         super().__init__(constraints=constraints, include_others=include_others)
-
 
 class CallbackTarget(Target):
     """Target based on a callback function."""
