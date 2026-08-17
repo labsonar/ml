@@ -3,14 +3,12 @@
 import os
 import argparse
 import tqdm
-import numpy as np
 
 import torch
 import torchaudio
 
 import lps_utils.utils as lps_utils
 import lps_utils.quantities as lps_qty
-import lps_sp.signal as lps_sig
 import lps_ml.utils.general as ml_gen
 import lps_ml.audio_processors as ml_procs
 import lps_sp.acoustical.broadband as lps_bb
@@ -59,7 +57,6 @@ def main():
     models = {}
 
     print("Loading models...")
-    converter = ml_procs.ToFloatConverter()
 
     for model_name, model_path in ml_gen.shortest_relative_path(args.models):
 
@@ -81,11 +78,13 @@ def main():
             break
 
         waveform, fs = torchaudio.load(wav_path)
+
+        #adjusting sample counts to multiples of the compaction factor
         n_samples = waveform.shape[-1]
         n_samples = (n_samples // compactness) * compactness
         waveform = waveform[..., :n_samples]
-        waveform = waveform.unsqueeze(0)
 
+        waveform = waveform.unsqueeze(0)
         filename = os.path.basename(wav_path)
 
         for model_name, model in models.items():

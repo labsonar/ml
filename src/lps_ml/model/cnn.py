@@ -42,9 +42,13 @@ class CNN2D(lps_mlp.MLP):
         classification_hidden_activation = classification_hidden_activation or conv_activation
         padding = padding or int((kernel_size - 1) / 2)
 
-        if len(input_shape) != 3:
-            raise ValueError(f"CNN expects as input an image in the format: \
-                                    channel x width x height (current {input_shape})")
+        if len(input_shape) == 2:
+            input_shape = [1] + input_shape
+        elif len(input_shape) != 3:
+            raise ValueError(
+                "CNN expects input in the format [C, H, W] or [H, W] "
+                f"(current {input_shape})"
+            )
 
         if isinstance(conv_dilation, int):
             conv_dilation = [conv_dilation] * len(conv_n_neurons)
@@ -102,6 +106,17 @@ class CNN2D(lps_mlp.MLP):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """ Forward pass through the CNN. """
+
+        if inputs.ndim == 3:
+            inputs = inputs.unsqueeze(1)
+
+        elif inputs.ndim != 4:
+            raise ValueError(
+                "CNN2D expects input with shape "
+                "[B, H, W] or [B, C, H, W], "
+                f"got {tuple(inputs.shape)}"
+            )
+
         features = self.to_feature_space(inputs)
         out = super().forward(features)
         return out

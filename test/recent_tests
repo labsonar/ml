@@ -1,7 +1,16 @@
 #!/bin/bash
 
-python test/test_vae_export.py --models /data/models/default_5M5.ts --output_dir ./result/vae_recon
-structions /data/iemanja/splited/val/
+# python test/test_vae_export.py --models /data/models/default_5M5.ts --output_dir ./result/vae_reconstructions /data/iemanja/splited/val/
+
+python app/iemanja_classifier.py --ie-target CLASS --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --output_dir ./result/vae_classifiers/ship/original --ie-dataset-dir /data/iemanja_truncated
+
+python app/iemanja_classifier.py --ie-target "NAME_(US)" --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --output_dir ./result/vae_classifiers/channel/original --ie-dataset-dir /data/iemanja_truncated
+
+# python app/iemenja_vae_reconstructor.py --model /data/models/rave.ts
+
+python app/iemanja_classifier.py --ie-target CLASS --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --output_dir ./result/vae_classifiers/ship/rave --ie-dataset-dir /data/iemanja_vae/rave
+
+python app/iemanja_classifier.py --ie-target "NAME_(US)" --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --output_dir ./result/vae_classifiers/channel/rave --ie-dataset-dir /data/iemanja_vae/rave
 
 # python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/train_ship --fold_role TRAIN
 # python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/train --export_umap --fold_role TRAIN
@@ -19,18 +28,18 @@ structions /data/iemanja/splited/val/
 # python test/test_latent_extrapolation.py --ie-latent-model /data/models/default_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename default --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_default_ep10000.pkl
 
 
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch1_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch50_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch50_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch50_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/default_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename default_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_default_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch1_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch50_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch50_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch50_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/default_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename default_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_default_ep1000.pkl
 
 
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_s1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5_s1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_s1_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_s1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_s1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_s1_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_s5_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_s5_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_s5_ep1000.pkl
-python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_s50_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100_s50_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_s50_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_s1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5_s1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_s1_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_s1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_s1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_s1_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_s5_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_s5_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_s5_ep1000.pkl
+# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_s50_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100_s50_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_s50_ep1000.pkl
 
 # time python scripts/train.py --config ./configs/cls_0.gin --db_path ./runs/dataset/ --out_path ./runs/models/test1 --name default --channels 1 --workers 1 --batch 32 --max_steps 300
 
@@ -55,24 +64,24 @@ python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_s5
 
 
 
-python test/test_latent_separability.py  --ie-target "NAME_(US)" --models /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --export_umap --fold_role TRAIN
+# python test/test_latent_separability.py  --ie-target "NAME_(US)" --models /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --export_umap --fold_role TRAIN
 
-python test/test_latent_extrapolation.py  --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --fold_role VALIDATION --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
-
-
-
-python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
-
-
-python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10 --fixed-input-channel 0 --fixed-output-channel 1
-
-
-python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --early-stopping-patience 10 --fixed-input-channel 1 --fixed-output-channel 0
-
-python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --ldm-checkpoint ./result/ldm_test/cls5/1-0/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+# python test/test_latent_extrapolation.py  --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --fold_role VALIDATION --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
 
 
 
-python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --early-stopping-patience 10 --channel-mode VARIABLE
+# python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
 
-python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --ldm-checkpoint "./result/ldm_cls_5_5M_95/variable_dist/best.ckpt" --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+
+# python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10 --fixed-input-channel 0 --fixed-output-channel 1
+
+
+# python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --early-stopping-patience 10 --fixed-input-channel 1 --fixed-output-channel 0
+
+# python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --ldm-checkpoint ./result/ldm_test/cls5/1-0/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+
+
+
+# python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --early-stopping-patience 10 --channel-mode VARIABLE
+
+# python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --ldm-checkpoint "./result/ldm_cls_5_5M_95/variable_dist/best.ckpt" --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
