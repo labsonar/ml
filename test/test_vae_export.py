@@ -3,6 +3,7 @@
 import os
 import argparse
 import tqdm
+import numpy as np
 
 import torch
 import torchaudio
@@ -11,7 +12,9 @@ import lps_utils.utils as lps_utils
 import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
 import lps_ml.utils.general as ml_gen
+import lps_ml.audio_processors as ml_procs
 import lps_sp.acoustical.broadband as lps_bb
+import lps_sp.acoustical.analysis as lps_analysis
 
 
 def main():
@@ -26,6 +29,7 @@ def main():
         required=True,
         help="Lista de modelos TorchScript (.ts)"
     )
+    parser.add_argument("--compactness", type=int, default=1024)
 
     parser.add_argument(
         "--n_samples",
@@ -50,10 +54,12 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     files = lps_utils.find_files(args.input_dir)
+    compactness = args.compactness
 
     models = {}
 
     print("Loading models...")
+    converter = ml_procs.ToFloatConverter()
 
     for model_name, model_path in ml_gen.shortest_relative_path(args.models):
 
@@ -75,18 +81,9 @@ def main():
             break
 
         waveform, fs = torchaudio.load(wav_path)
-
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(
-                waveform,
-                dim=0,
-                keepdim=True
-            )
-
-        waveform = waveform / (
-            waveform.abs().max() + 1e-12
-        )
-
+        n_samples = waveform.shape[-1]
+        n_samples = (n_samples // compactness) * compactness
+        waveform = waveform[..., :n_samples]
         waveform = waveform.unsqueeze(0)
 
         filename = os.path.basename(wav_path)
@@ -96,16 +93,13 @@ def main():
             with torch.inference_mode():
                 reconstruction = model(waveform)
 
-            recon_data = reconstruction.detach().cpu().squeeze()
+            original_data = waveform.detach().cpu().squeeze().numpy()
+            recon_data = reconstruction.detach().cpu().squeeze().numpy()
 
             if recon_data.ndim == 2:
                 recon_data = recon_data[0]
 
-            output_file = os.path.join(
-                args.output_dir,
-                model_name,
-                filename
-            )
+            output_file = os.path.join(args.output_dir, model_name, filename)
 
             ml_gen.save_convert_wav(
                 data=recon_data,
@@ -113,14 +107,29 @@ def main():
                 filename=output_file
             )
 
-            psd_file = os.path.splitext(output_file)[0] + ".png"
+
+            psd_file = os.path.splitext(output_file)[0] + "_psd.png"
             lps_bb.plot_psds(
                 filename=psd_file,
-                noises=[waveform, recon_data],
+                noises=[original_data, recon_data],
                 labels=["Original", "Reconstrução"],
                 window_size=4096,
                 overlap=0.5,
                 fs=lps_qty.Frequency.hz(fs)
+            )
+
+            psd_file = os.path.splitext(output_file)[0] + "_mel.png"
+            lps_analysis.plot_spectral_analysis(
+                filename=psd_file,
+                signals=[original_data, recon_data],
+                labels=["Original", "Reconstrução"],
+                fs=lps_qty.Frequency.hz(fs),
+                analysis=lps_analysis.SpectralAnalysis.MELGRAM,
+                params=lps_analysis.Parameters(
+                    n_spectral_pts=4096,
+                    overlap=0.5,
+                    n_mels=512
+                )
             )
 
 

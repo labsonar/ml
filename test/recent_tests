@@ -1,12 +1,15 @@
 #!/bin/bash
 
-python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/train_ship --fold_role TRAIN
-python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/train --export_umap --fold_role TRAIN
+python test/test_vae_export.py --models /data/models/default_5M5.ts --output_dir ./result/vae_recon
+structions /data/iemanja/splited/val/
 
-python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/val_ship --fold_role VALIDATION
-python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val --fold_role VALIDATION
+# python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/train_ship --fold_role TRAIN
+# python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/train --export_umap --fold_role TRAIN
 
-python test/test_latent_extrapolations.py --models /data/models/*.ts --umap-dir ./result/latent_analysis/train --fold_role VALIDATION --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross
+# python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/val_ship --fold_role VALIDATION
+# python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val --fold_role VALIDATION
+
+# python test/test_latent_extrapolations.py --models /data/models/*.ts --umap-dir ./result/latent_analysis/train --fold_role VALIDATION --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross
 
 # python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch1_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch1 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch1_ep10000.pkl
 # python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_ep10000.pkl
