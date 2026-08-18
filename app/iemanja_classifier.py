@@ -177,7 +177,7 @@ def _main():
             shutil.copy2(checkpoint_cb.last_model_path, model_last)
             shutil.copy2(checkpoint_cb.best_model_path, model_best)
 
-        best_model = ml_model.CNN2D.load_from_checkpoint(model_last)
+        best_model = ml_model.CNN2D.load_from_checkpoint(model_best)
         best_model.eval()
 
         train_bal_acc, train_f1 = _evaluate_accuracy(best_model, dm.train_dataloader())

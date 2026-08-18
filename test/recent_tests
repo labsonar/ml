@@ -12,6 +12,11 @@ python app/iemanja_classifier.py --ie-target CLASS --ie-representation spectral 
 
 python app/iemanja_classifier.py --ie-target "NAME_(US)" --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --output_dir ./result/vae_classifiers/channel/rave --ie-dataset-dir /data/iemanja_vae/rave
 
+
+python app/iemanja_vae_cross_classifier.py --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --ie-target CLASS --model1 ./result/vae_classifiers/ship/original --dataset1-dir /data/iemanja_truncated --model2 ./result/vae_classifiers/ship/rave --dataset2-dir /data/iemanja_vae/rave --output-dir ./result/vae_cross_classifiers/rave/ship
+
+python app/iemanja_vae_cross_classifier.py --ie-representation spectral --spectral-analysis MELGRAM --spectral-n-pts 4096 --spectral-overlap 0 --spectral-n-mels 512 --ie-target "NAME_(US)" --model1 ./result/vae_classifiers/channel/original --dataset1-dir /data/iemanja_truncated --model2 ./result/vae_classifiers/channel/rave --dataset2-dir /data/iemanja_vae/rave --output-dir ./result/vae_cross_classifiers/rave/channel
+
 # python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/train_ship --fold_role TRAIN
 # python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/train --export_umap --fold_role TRAIN
 
