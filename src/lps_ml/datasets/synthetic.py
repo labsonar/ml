@@ -414,6 +414,25 @@ class IemanjaBuilder:
         if not self.vae_exclusive and not self.time_exclusive:
             lps_analysis.SpectralAnalysis.add_args(parser=parser)
 
+            group = parser.add_argument_group("CNN Embedding (over Spectral Analysis)")
+
+            group.add_argument(
+                "--ie-cnn-models",
+                type=str,
+                nargs="+",
+                default=None,
+                help=(
+                    "Paths to CNN models used to extract feature-space embeddings. "
+                    "Embeddings from all models are concatenated."
+                )
+            )
+
+            group.add_argument(
+                "--ie-cnn-flatten",
+                action="store_true",
+                help="Flatten the concatenated CNN feature space into a single vector."
+            )
+
     def add_argparse_args(self, parser: argparse.ArgumentParser):
         self._add_dataset_args(parser)
         self._add_processing_args(parser)
@@ -426,14 +445,13 @@ class IemanjaBuilder:
         n_samples = args.ie_n_samples
         overlap = args.ie_overlap
 
-        pipelines : typing.List[ml_proc.AudioPipeline] = [
-            ml_procs.ToFloatConverter()
-        ]
+        audio_pipelines : typing.List[ml_proc.AudioPipeline] = [ml_procs.ToFloatConverter()]
+        sample_pipelines: typing.List[ml_core.SamplePipeline] = []
 
         if not self.time_exclusive:
 
             if vae_model is not None:
-                pipelines.append(ml_procs.VAEEncoder(vae_model))
+                audio_pipelines.append(ml_procs.VAEEncoder(vae_model))
 
                 n_samples=int(n_samples / compactness)
                 overlap=int(overlap / compactness)
@@ -441,18 +459,9 @@ class IemanjaBuilder:
             elif self.vae_exclusive or args.ie_representation == "latent":
 
                 if args.ie_latent_model is None:
+                    raise ValueError("--ie-latent-model must be provided ")
 
-                    if self.vae_exclusive:
-                        raise ValueError(
-                            "--ie-latent-model must be provided "
-                        )
-                    else:
-                        raise ValueError(
-                            "--ie-latent-model must be provided "
-                            "when --ie-representation latent"
-                        )
-
-                pipelines.append(ml_procs.VAEEncoder(args.ie_latent_model))
+                audio_pipelines.append(ml_procs.VAEEncoder(args.ie_latent_model))
 
                 n_samples=int(n_samples / args.ie_latent_compactness)
                 overlap=int(overlap / args.ie_latent_compactness)
@@ -461,15 +470,25 @@ class IemanjaBuilder:
 
                 analysis, params = lps_analysis.SpectralAnalysis.build_from_args(args)
 
-                pipelines.append(ml_procs.SpectralProcessor(analysis=analysis, params=params))
+                audio_pipelines.append(ml_procs.SpectralProcessor(analysis=analysis, params=params))
 
                 n_samples=int(n_samples / params.n_spectral_pts)
                 overlap=int(overlap / params.n_spectral_pts)
 
+                if args.ie_cnn_models is not None:
+
+                    sample_pipelines.append(
+                        ml_procs.CNN2DPipeline(
+                            model_paths=args.ie_cnn_models,
+                            flatten=args.ie_cnn_flatten,
+                        )
+                    )
+
         return ml_procs.SampleProcessor(
             n_samples=n_samples,
             overlap=overlap,
-            pipelines=pipelines
+            audio_pipelines=audio_pipelines,
+            sample_pipelines=sample_pipelines
         )
 
     def _build_args(self,
