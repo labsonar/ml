@@ -86,32 +86,42 @@ class CPADetector(ml_core.AudioPipeline):
 
         return fs, cropped_signal
 
+class ToFloatConverter(ml_core.AudioPipeline):
+    """AudioPipeline that converts int16 audio to float32 in range [-1, 1]."""
+
+    def process(
+        self,
+        fs: lps_qty.Frequency,
+        data: np.ndarray
+    ) -> typing.Tuple[lps_qty.Frequency, np.ndarray]:
+
+        data_float = data.astype(np.float32) / 2**15
+        data_float = np.clip(data_float, -1.0, 1.0)
+        return fs, data_float
+
 class SampleProcessor(ml_core.AudioProcessor):
-    """ Processor base que opera em número de amostras (última dimensão). """
+    """ Base processor that operates on the number of samples (last dimension). """
 
     def __init__(
         self,
         n_samples: int,
         overlap: int,
         fs_out: lps_qty.Frequency = None,
-        pipelines: typing.Sequence[ml_core.AudioPipeline] | None = None
+        audio_pipelines: typing.Sequence[ml_core.AudioPipeline] | None = None,
+        sample_pipelines: typing.Sequence[ml_core.SamplePipeline] | None = None,
     ):
-        super().__init__()
+        audio_pipelines = audio_pipelines = list(audio_pipelines or [])
+
+        if fs_out is not None:
+            self.audio_pipelines.insert(0, Resampler(fs_out=fs_out))
+
+        super().__init__(audio_pipelines, sample_pipelines)
 
         self.n_samples = n_samples
         self.overlap = overlap
 
-        self.pipelines: typing.List[ml_core.AudioPipeline] = (
-            list(pipelines) if pipelines is not None else []
-        )
 
-        if fs_out is not None:
-            self.pipelines.insert(0, Resampler(fs_out=fs_out))
-
-    def process(self, fs: lps_qty.Frequency, data: np.ndarray) -> typing.List[np.ndarray]:
-
-        for pipeline in self.pipelines:
-            fs, data = pipeline.process(fs=fs, data=data)
+    def fragment(self, fs: lps_qty.Frequency, data: np.ndarray) -> typing.List[np.ndarray]:
 
         data_samples = data.shape[-1]
         step = self.n_samples - self.overlap
@@ -128,84 +138,57 @@ class SampleProcessor(ml_core.AudioProcessor):
 
         return windows
 
-class TimeProcessor(ml_core.AudioProcessor):
-    """ Wrapper que permite definir janelas em tempo ao invés de samples. """
+class TimeProcessor(SampleProcessor):
+    """Processor that defines sample windows in time."""
 
     def __init__(
         self,
         duration: lps_qty.Time,
         overlap: lps_qty.Time,
         fs_out: lps_qty.Frequency = None,
-        pipelines: ml_core.AudioPipeline | typing.List[ml_core.AudioPipeline] | None = None
+        audio_pipelines: typing.Sequence[ml_core.AudioPipeline] | None = None,
+        sample_pipelines: typing.Sequence[ml_core.SamplePipeline] | None = None,
     ):
-        super().__init__()
+        super().__init__(
+            n_samples=0,
+            overlap=0,
+            fs_out=fs_out,
+            audio_pipelines=audio_pipelines,
+            sample_pipelines=sample_pipelines,
+        )
 
         self.duration = duration
         self.overlap_time = overlap
-        self.fs_out = fs_out
 
-        if pipelines is None:
-            self.pipelines = []
-        elif isinstance(pipelines, ml_core.AudioPipeline):
-            self.pipelines = [pipelines]
-        else:
-            self.pipelines = pipelines
-
-        if fs_out is not None:
-            self.pipelines = [Resampler(fs_out=fs_out)] + self.pipelines
-
-    def process(self, fs: lps_qty.Frequency, data: np.ndarray) -> typing.List[np.ndarray]:
-
-        for pipeline in self.pipelines:
-            fs, data = pipeline.process(fs=fs, data=data)
-
-        data_samples = data.shape[-1]
-        n_samples = int(self.duration * fs)
-        overlap = int(self.overlap_time * fs)
-
-        step = n_samples - overlap
-
-        if step <= 0:
-            raise ValueError("Overlap deve ser menor que n_samples.")
-
-        windows = []
-
-        for start in range(0, data_samples - n_samples + 1, step):
-            slc = [slice(None)] * data.ndim
-            slc[-1] = slice(start, start + n_samples)
-            windows.append(data[tuple(slc)])
-
-        return windows
-
-class ToFloatConverter(ml_core.AudioPipeline):
-    """AudioPipeline that converts int16 audio to float32 in range [-1, 1]."""
-
-    def process(
+    def fragment(
         self,
         fs: lps_qty.Frequency,
-        data: np.ndarray
-    ) -> typing.Tuple[lps_qty.Frequency, np.ndarray]:
+        data: np.ndarray,
+    ) -> typing.List[np.ndarray]:
 
-        data_float = data.astype(np.float32) / 2**15
-        data_float = np.clip(data_float, -1.0, 1.0)
-        return fs, data_float
+        if (self.n_samples == 0):
+            self.n_samples = int(self.duration * fs)
+            self.overlap = int(self.overlap_time * fs)
+
+        return super().fragment(fs=fs, data=data)
 
 class SimpleProcessor(ml_core.AudioProcessor):
-    """ Simple processor that applies a list of pipelines. """
+    """Processor that returns the complete processed audio as a single sample."""
 
-    def __init__(self,
-                 pipelines: typing.Union[ml_core.AudioPipeline,
-                                         typing.List[ml_core.AudioPipeline]]):
-        super().__init__()
+    def __init__(
+        self,
+        audio_pipelines: typing.Sequence[ml_core.AudioPipeline] | None = None,
+        sample_pipelines: typing.Sequence[ml_core.SamplePipeline] | None = None,
+    ):
+        super().__init__(
+            audio_pipelines=audio_pipelines,
+            sample_pipelines=sample_pipelines,
+        )
 
-        if isinstance(pipelines, ml_core.AudioPipeline):
-            self.pipelines = [pipelines]
-        else:
-            self.pipelines = pipelines
-
-    def process(self, fs: lps_qty.Frequency, data: np.array) -> typing.List[np.array]:
-
-        for pipeline in self.pipelines:
-            fs, data = pipeline.process(fs=fs, data=data)
+    def fragment(
+        self,
+        fs: lps_qty.Frequency,
+        data: np.ndarray,
+    ) -> typing.List[np.ndarray]:
 
         return [data]

@@ -4,7 +4,7 @@ Allows to import the __all__ by folder name.
 from .cv import CrossValidator, SimpleSplitCV
 from .datamodule import BaseDataModule, AudioDataModule, ProcessedDataset, PairedProcessedDataset, PairedAudioDataModule
 from .loader import AudioFileLoader
-from .processor import AudioProcessor, AudioPipeline
+from .processor import AudioProcessor, AudioPipeline, SamplePipeline
 
 __all__ = [
     "CrossValidator",
@@ -16,5 +16,6 @@ __all__ = [
     "PairedAudioDataModule",
     "AudioFileLoader",
     "AudioProcessor",
-    "AudioPipeline"
+    "AudioPipeline",
+    "SamplePipeline"
 ]
