@@ -115,7 +115,11 @@ class CNN2DPipeline(ml_core.SamplePipeline):
 
         for model_path in self.model_paths:
 
-            model = lps_cnn.CNN2D.load_from_checkpoint(model_path)
+            path = model_path
+            if os.path.isdir(path):
+                path = os.path.join(path, "best.ckpt")
+
+            model = lps_cnn.CNN2D.load_from_checkpoint(path)
             model.to(self.device)
             model.eval()
 
