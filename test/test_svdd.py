@@ -25,6 +25,20 @@ import lps_ml.utils.device as ml_device
 import lps_ml.utils.general as ml_utils
 import lps_ml.model.svdd as ml_svdd
 
+class WarmupEarlyStopping(lightning_call.EarlyStopping):
+    """Early stopping that ignores validation before the SVDD warm-up."""
+
+    def __init__(self, warmup_epochs: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.warmup_epochs = warmup_epochs
+
+    def on_validation_end(self, trainer, pl_module):
+        """Run early stopping only after warm-up."""
+
+        if trainer.current_epoch < self.warmup_epochs:
+            return
+
+        super().on_validation_end(trainer, pl_module)
 
 def _add_svdd_args(parser: argparse.ArgumentParser):
     """Add SVDD-MLP command-line arguments."""
@@ -302,7 +316,8 @@ def _main():
     callbacks = [
         checkpoint_cb,
 
-        lightning_call.EarlyStopping(
+        WarmupEarlyStopping(
+            warmup_epochs=args.svdd_warmup_epochs,
             monitor="val/loss",
             min_delta=args.early_stopping_min_delta,
             patience=args.early_stopping_patience,

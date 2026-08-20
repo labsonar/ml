@@ -19,19 +19,27 @@ python app/iemanja_vae_cross_classifier.py --ie-representation spectral --ie-tar
 python app/iemanja_vae_cross_classifier.py --ie-representation spectral --ie-target "NAME_(US)" --model1 ./result/vae_classifiers/channel/original --dataset1-dir /data/iemanja_truncated --model2 ./result/vae_classifiers/channel/rave --dataset2-dir /data/iemanja_vae/rave --output-dir ./result/vae_cross_classifiers/rave/channel
 
 
+python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/ship
 
-python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/ship
+python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/channel
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/ship/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/ship-rave
+python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/combined
+
+python test/test_svdd.py --ie-representation raw --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/time
+
+python test/test_svdd.py --ie-representation spectral --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/mel
 
 
-python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/channel
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/channel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/channel-rave
+python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/ship/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/ship-rave
 
-python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/combined
+python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/channel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/channel-rave
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/combined/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/combined-rave
+python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/combined/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/combined-rave
+
+python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/time/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation raw --output-dir ./result/svdd/metrics/time-rave
+
+python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/mel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --output-dir ./result/svdd/metrics/mel-rave
 
 # python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/train_ship --fold_role TRAIN
 # python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/train --export_umap --fold_role TRAIN

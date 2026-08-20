@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Evaluate generative quality using a SVDD embedding.
 
@@ -61,7 +60,6 @@ def load_model(path: str):
 
     return model
 
-
 def build_datamodule(
     builder,
     args,
@@ -78,11 +76,7 @@ def build_datamodule(
 
     return dm
 
-
-def get_split_ids(
-    dm,
-    split: str,
-):
+def get_split_ids(dm, split: str):
     """
     Return file IDs belonging to a split.
     """
@@ -109,11 +103,7 @@ def get_split_ids(
         .tolist()
     )
 
-
-def verify_split_parity(
-    dm1,
-    dm2,
-):
+def verify_split_parity(dm1, dm2):
     """
     Verify that the two datasets have identical
     train/validation/test file IDs.
@@ -140,19 +130,13 @@ def verify_split_parity(
 
         if only_1 or only_2:
 
-            print(
-                f"\nERROR: split '{split}' is not identical."
-            )
+            print(f"\nERROR: split '{split}' is not identical.")
 
             if only_1:
-                print(
-                    f"  Only dataset1: {len(only_1)} files"
-                )
+                print(f"  Only dataset1: {len(only_1)} files")
 
             if only_2:
-                print(
-                    f"  Only dataset2: {len(only_2)} files"
-                )
+                print(f"  Only dataset2: {len(only_2)} files")
 
             raise RuntimeError(
                 "Dataset splits are not paired. "
@@ -163,42 +147,15 @@ def verify_split_parity(
     print("All splits have identical file IDs.")
     print("=" * 70)
 
-
-def evaluate_split(
-    model,
-    real_dataloader,
-    synthetic_dataloader,
-):
-    """
-    Calculate generative metrics for one dataset split.
-    """
-
-    metrics = model.calculate_alpha_beta_authenticity(
-        real_dataloader=real_dataloader,
-        synthetic_dataloader=synthetic_dataloader,
-    )
-
-    return metrics
-
-
-def save_curves(
-    metrics: dict,
-    filename: str,
-    title: str,
-):
+def save_curves(metrics: dict, filename: str, title: str):
     """
     Save alpha-precision and beta-recall curves.
     """
 
     alphas = metrics["alphas"]
 
-    alpha_precision = (
-        metrics["alpha_precision_curve"]
-    )
-
-    beta_recall = (
-        metrics["beta_recall_curve"]
-    )
+    alpha_precision = metrics["alpha_precision_curve"]
+    beta_recall = metrics["beta_recall_curve"]
 
     curves_df = pd.DataFrame(
         {
@@ -208,55 +165,24 @@ def save_curves(
         }
     )
 
-    curves_df.to_csv(
-        filename,
-        index=False,
-    )
-
+    curves_df.to_csv(filename, index=False)
     return curves_df
 
-
-def plot_curves(
-    metrics: dict,
-    title: str,
-    filename: str,
-):
+def plot_curves(metrics: dict, title: str, filename: str):
     """
     Plot alpha-precision and beta-recall curves.
     """
 
     alphas = metrics["alphas"]
 
-    alpha_precision = (
-        metrics["alpha_precision_curve"]
-    )
+    alpha_precision = metrics["alpha_precision_curve"]
+    beta_recall = metrics["beta_recall_curve"]
 
-    beta_recall = (
-        metrics["beta_recall_curve"]
-    )
+    fig, ax = plt.subplots(figsize=(8, 6))
 
-    fig, ax = plt.subplots(
-        figsize=(8, 6)
-    )
-
-    ax.plot(
-        alphas,
-        alpha_precision,
-        label="Alpha-precision",
-    )
-
-    ax.plot(
-        alphas,
-        beta_recall,
-        label="Beta-recall",
-    )
-
-    ax.plot(
-        alphas,
-        alphas,
-        linestyle="--",
-        label="Ideal",
-    )
+    ax.plot(alphas, alpha_precision, label="Alpha-precision")
+    ax.plot(alphas, beta_recall, label="Beta-recall")
+    ax.plot(alphas, alphas, linestyle="--", label="Ideal")
 
     ax.set_xlabel("Alpha")
     ax.set_ylabel("Metric")
@@ -269,14 +195,8 @@ def plot_curves(
     ax.legend()
 
     fig.tight_layout()
-
-    fig.savefig(
-        filename,
-        dpi=150,
-    )
-
+    fig.savefig(filename, dpi=150)
     plt.close(fig)
-
 
 def _main():
 
@@ -338,22 +258,14 @@ def _main():
     builder = ml_db.IemanjaBuilder()
 
     builder.add_argparse_args(parser)
-
     args = parser.parse_args()
 
-    # --------------------------------------------------------------
-    # Setup
-    # --------------------------------------------------------------
 
     torch.set_float32_matmul_precision("medium")
 
     ml_utils.set_seed()
 
-    os.makedirs(
-        args.output_dir,
-        exist_ok=True,
-    )
-
+    os.makedirs(args.output_dir, exist_ok=True)
     device = ml_device.get_available_device()
 
     print()
@@ -370,20 +282,9 @@ def _main():
 
     print("=" * 70)
 
-    # --------------------------------------------------------------
-    # Load model
-    # --------------------------------------------------------------
-
-    model = load_model(
-        args.svdd_model
-    )
-
+    model = load_model(args.svdd_model)
     model = model.to(device)
     model.eval()
-
-    # --------------------------------------------------------------
-    # Build datasets
-    # --------------------------------------------------------------
 
     print()
     print("Building Dataset 1...")
@@ -403,111 +304,67 @@ def _main():
         dataset_dir=args.dataset2_dir,
     )
 
-    # --------------------------------------------------------------
-    # Verify pairing
-    # --------------------------------------------------------------
-
-    verify_split_parity(
-        dm1,
-        dm2,
-    )
+    verify_split_parity(dm1, dm2)
 
     dataset1_name = "original"
     dataset2_name = "reconstructed"
 
-    # --------------------------------------------------------------
-    # Evaluation
-    # --------------------------------------------------------------
-
     metrics_rows = []
 
-    for split in ["val", "test"]:
+    for split in ["internal", "val", "test"]:
 
         print()
         print("=" * 70)
         print(f"Evaluating {split}")
         print("=" * 70)
 
-        if split == "val":
+        name1 = dataset1_name
+        name2 = dataset2_name
 
-            real_loader = dm1.val_dataloader(
-                shuffle=False
-            )
+        if split == "internal":
+            reference_loader = dm1.train_dataloader(shuffle=False)
+            analysis_loader = dm1.val_dataloader(shuffle=False)
+            name1 = dataset1_name + "(train)"
+            name2 = dataset2_name + "(val)"
 
-            synthetic_loader = dm2.val_dataloader(
-                shuffle=False
-            )
+        elif split == "val":
+            reference_loader = dm1.val_dataloader(shuffle=False)
+            analysis_loader = dm2.val_dataloader(shuffle=False)
+
+        elif split == "test":
+            reference_loader = dm1.test_dataloader(shuffle=False)
+            analysis_loader = dm2.test_dataloader(shuffle=False)
 
         else:
+            raise ValueError(f"Invalid split: {split}")
 
-            real_loader = dm1.test_dataloader(
-                shuffle=False
-            )
+        print(f"Reference : {dataset1_name}")
+        print(f"Synthetic : {dataset2_name}")
 
-            synthetic_loader = dm2.test_dataloader(
-                shuffle=False
-            )
 
-        print(
-            f"Reference : {dataset1_name}"
+        metrics = model.calculate_alpha_beta_authenticity(
+            real_dataloader=reference_loader,
+            synthetic_dataloader=analysis_loader,
+            n_steps=args.n_steps
         )
-
-        print(
-            f"Synthetic : {dataset2_name}"
-        )
-
-        metrics = evaluate_split(
-            model=model,
-            real_dataloader=real_loader,
-            synthetic_dataloader=synthetic_loader,
-        )
-
-        # ----------------------------------------------------------
-        # Print metrics
-        # ----------------------------------------------------------
 
         print()
-        print(
-            f"Alpha-precision : "
-            f"{metrics['alpha_precision']:.6f}"
-        )
-
-        print(
-            f"Beta-recall     : "
-            f"{metrics['beta_recall']:.6f}"
-        )
-
-        print(
-            f"Authenticity    : "
-            f"{metrics['authenticity']:.6f}"
-        )
-
-        # ----------------------------------------------------------
-        # Save scalar metrics
-        # ----------------------------------------------------------
+        print(f"Alpha-precision : {metrics['alpha_precision']:.6f}")
+        print(f"Beta-recall     : {metrics['beta_recall']:.6f}")
+        print(f"Authenticity    : {metrics['authenticity']:.6f}")
 
         metrics_rows.append(
             {
                 "split": split,
-                "dataset1": dataset1_name,
-                "dataset2": dataset2_name,
-                "alpha_precision":
-                    metrics["alpha_precision"],
-                "beta_recall":
-                    metrics["beta_recall"],
-                "authenticity":
-                    metrics["authenticity"],
+                "dataset1": name1,
+                "dataset2": name2,
+                "alpha_precision": metrics["alpha_precision"],
+                "beta_recall": metrics["beta_recall"],
+                "authenticity": metrics["authenticity"],
             }
         )
 
-        # ----------------------------------------------------------
-        # Save curves
-        # ----------------------------------------------------------
-
-        curves_file = os.path.join(
-            args.output_dir,
-            f"curves_{split}.csv",
-        )
+        curves_file = os.path.join(args.output_dir, f"curves_{split}.csv")
 
         save_curves(
             metrics=metrics,
@@ -515,87 +372,35 @@ def _main():
             title=f"SVDD generative metrics - {split}",
         )
 
-        # ----------------------------------------------------------
-        # Plot curves
-        # ----------------------------------------------------------
-
-        plot_file = os.path.join(
-            args.output_dir,
-            f"curves_{split}.png",
-        )
+        plot_file = os.path.join(args.output_dir, f"curves_{split}.png")
 
         plot_curves(
             metrics=metrics,
-            title=(
-                f"Alpha-precision / Beta-recall - "
-                f"{split}"
-            ),
+            title=f"Alpha-precision / Beta-recall - {split}",
             filename=plot_file,
         )
 
-    # --------------------------------------------------------------
-    # Save metrics
-    # --------------------------------------------------------------
-
-    metrics_df = pd.DataFrame(
-        metrics_rows
-    )
-
-    metrics_file = os.path.join(
-        args.output_dir,
-        "metrics.csv",
-    )
-
-    metrics_df.to_csv(
-        metrics_file,
-        index=False,
-    )
-
-    # --------------------------------------------------------------
-    # Final output
-    # --------------------------------------------------------------
+    metrics_df = pd.DataFrame(metrics_rows)
+    metrics_file = os.path.join(args.output_dir, "metrics.csv")
+    metrics_df.to_csv(metrics_file, index=False)
 
     print()
     print("=" * 70)
     print("METRICS")
     print("=" * 70)
 
-    print(
-        metrics_df.to_string(
-            index=False
-        )
-    )
+    print(metrics_df.to_string(index=False))
 
     print()
     print("=" * 70)
     print("OUTPUT")
     print("=" * 70)
 
-    print(
-        f"Metrics : "
-        f"{metrics_file}"
-    )
-
-    print(
-        f"Val curves : "
-        f"{args.output_dir}/curves_val.csv"
-    )
-
-    print(
-        f"Test curves: "
-        f"{args.output_dir}/curves_test.csv"
-    )
-
-    print(
-        f"Val plot   : "
-        f"{args.output_dir}/curves_val.png"
-    )
-
-    print(
-        f"Test plot  : "
-        f"{args.output_dir}/curves_test.png"
-    )
-
+    print(f"Metrics : {metrics_file}")
+    print(f"Val curves : {args.output_dir}/curves_val.csv")
+    print(f"Test curves: {args.output_dir}/curves_test.csv")
+    print(f"Val plot   : {args.output_dir}/curves_val.png")
+    print(f"Test plot  : {args.output_dir}/curves_test.png")
     print("=" * 70)
 
 

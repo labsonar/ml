@@ -377,6 +377,22 @@ class SVDDMLP(lightning.LightningModule):
         delta_beta_recall = \
             1.0 - 2.0 * np.sum(np.abs(alphas - beta_recall_curve)) * (alphas[1] - alphas[0])
 
+        # 1) Checar variância/colapso dos embeddings
+        print("std distância real->centro:", real_to_center.std(), "média:", real_to_center.mean())
+        print("std distância synth->centro:", synthetic_to_center.std(), "média:", synthetic_to_center.mean())
+        # se std << média, hiperesfera pode estar colapsando
+
+        # 2) Checar duplicatas/empates
+        print("valores únicos em real_synth_closest_d:", len(np.unique(closest_synthetic_distance_to_center)),
+            "de", len(closest_synthetic_distance_to_center))
+        print("valores únicos em synthetic_data:", len(np.unique(synthetic_data, axis=0)), "de", len(synthetic_data))
+
+        # 3) Checar monotonicidade da curva (deveria ser não-decrescente)
+        print("beta_recall_curve monotônica?", np.all(np.diff(beta_recall_curve) >= -1e-9))
+
+        # 4) Checar se curve(alpha) > alpha em algum ponto (viola a invariante)
+        print("pontos onde curve > alpha:", np.where(beta_recall_curve > alphas + 1e-9)[0])
+
         return {
             "alpha_precision": float(delta_alpha_precision),
             "beta_recall": float(delta_beta_recall),
