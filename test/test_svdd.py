@@ -338,6 +338,9 @@ def _main():
         callbacks=callbacks,
     )
 
+    dm.setup()
+    model.initialize_center(dm.train_dataloader())
+
     trainer.fit(model, dm)
 
     shutil.copy2(checkpoint_cb.last_model_path, model_last)

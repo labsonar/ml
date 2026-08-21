@@ -126,7 +126,6 @@ class SVDDMLP(lightning.LightningModule):
             self.center.copy_(center)
             self.center_initialized.fill_(True)
 
-
     @torch.no_grad()
     def update_radius(self) -> None:
         """
@@ -192,27 +191,54 @@ class SVDDMLP(lightning.LightningModule):
 
         self._epoch_distances.clear()
 
-    def on_fit_start(self) -> None:
-        """
-        Initialize the SVDD center before the first optimization step.
-        """
+    # def on_fit_start(self) -> None:
+    #     """
+    #     Initialize the SVDD center before the first optimization step.
+    #     """
 
-        if self.center_initialized.item():
-            return
+    #     if self.center_initialized.item():
+    #         return
 
-        if self.trainer.datamodule is not None:
-            dataloader = self.trainer.datamodule.train_dataloader()
+    #     if self.trainer.datamodule is not None:
+    #         dataloader = self.trainer.datamodule.train_dataloader()
 
-        elif self.trainer.train_dataloader is not None:
-            dataloader = self.trainer.train_dataloader
+    #     elif self.trainer.train_dataloader is not None:
+    #         dataloader = self.trainer.train_dataloader
 
-        else:
-            raise RuntimeError(
-                "Could not obtain training dataloader to "
-                "initialize the SVDD center."
-            )
+    #     else:
+    #         raise RuntimeError(
+    #             "Could not obtain training dataloader to "
+    #             "initialize the SVDD center."
+    #         )
 
-        self.initialize_center(dataloader)
+    #     self.initialize_center(dataloader)
+
+    # def on_train_start(self) -> None:
+    #     """
+    #     Initialize the SVDD center before the first training epoch.
+    #     """
+
+    #     if self.center_initialized.item():
+    #         return
+
+    #     dataloader = self.trainer.train_dataloader
+
+    #     if dataloader is None:
+    #         raise RuntimeError(
+    #             "Could not obtain training dataloader "
+    #             "to initialize the SVDD center."
+    #         )
+
+    #     # Lightning may wrap the dataloader in a list.
+    #     if isinstance(dataloader, (list, tuple)):
+    #         if len(dataloader) != 1:
+    #             raise RuntimeError(
+    #                 "SVDDMLP expects exactly one training dataloader."
+    #             )
+
+    #         dataloader = dataloader[0]
+
+    #     self.initialize_center(dataloader)
 
     def _shared_step(self, batch, stage: str) -> typing.Tuple[torch.Tensor, torch.Tensor]:
         """Shared training and validation step."""
