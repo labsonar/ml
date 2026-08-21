@@ -290,6 +290,7 @@ def _main():
 
         n_samples = n_samples // args.compactness * args.compactness
         waveform = waveform[..., :n_samples]
+        waveform = waveform.unsqueeze(0).to(device)
 
         with torch.inference_mode():
             reconstruction = model(waveform)

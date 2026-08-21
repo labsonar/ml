@@ -1,116 +1,36 @@
 #!/bin/bash
 # tensorboard --logdir . --port 8888 --bind_all
 
-# python test/test_vae_export.py --models /data/models/default_5M5.ts --output_dir ./result/vae_reconstructions /data/iemanja/splited/val/
 
-python app/iemanja_classifier.py --ie-target CLASS --ie-representation spectral --output_dir ./result/vae_classifiers/ship/original --ie-dataset-dir /data/iemanja_truncated
+# python test/test_svdd.py --ie-representation spectral --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/mel
 
-python app/iemanja_classifier.py --ie-target "NAME_(US)" --ie-representation spectral --output_dir ./result/vae_classifiers/channel/original --ie-dataset-dir /data/iemanja_truncated
+# python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/ship
 
-# python app/iemenja_vae_reconstructor.py --model /data/models/rave.ts
+# python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/channel
 
-python app/iemanja_classifier.py --ie-target CLASS --ie-representation spectral --output_dir ./result/vae_classifiers/ship/rave --ie-dataset-dir /data/iemanja_vae/rave
+# python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/combined
 
-python app/iemanja_classifier.py --ie-target "NAME_(US)" --ie-representation spectral --output_dir ./result/vae_classifiers/channel/rave --ie-dataset-dir /data/iemanja_vae/rave
+# python test/test_svdd.py --ie-representation raw --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/time
 
-
-python app/iemanja_vae_cross_classifier.py --ie-representation spectral --ie-target CLASS --model1 ./result/vae_classifiers/ship/original --dataset1-dir /data/iemanja_truncated --model2 ./result/vae_classifiers/ship/rave --dataset2-dir /data/iemanja_vae/rave --output-dir ./result/vae_cross_classifiers/rave/ship
-
-python app/iemanja_vae_cross_classifier.py --ie-representation spectral --ie-target "NAME_(US)" --model1 ./result/vae_classifiers/channel/original --dataset1-dir /data/iemanja_truncated --model2 ./result/vae_classifiers/channel/rave --dataset2-dir /data/iemanja_vae/rave --output-dir ./result/vae_cross_classifiers/rave/channel
-
-
-python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/ship
-
-python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/channel
-
-python test/test_svdd.py --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/combined
-
-python test/test_svdd.py --ie-representation raw --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/time
-
-python test/test_svdd.py --ie-representation spectral --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/mel
+# python test/test_svdd.py --ie-representation spectral --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/mel
 
 
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/ship/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/ship-rave
+# python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/ship/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/ship-rave
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/channel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/channel-rave
+# python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/channel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/channel-rave
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/combined/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/combined-rave
+# python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/combined/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --ie-cnn-models ./result/vae_classifiers/ship/original/ ./result/vae_classifiers/channel/original/ --ie-cnn-flatten --output-dir ./result/svdd/metrics/combined-rave
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/time/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation raw --output-dir ./result/svdd/metrics/time-rave
+# python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/time/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation raw --output-dir ./result/svdd/metrics/time-rave
 
-python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/mel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --output-dir ./result/svdd/metrics/mel-rave
-
-# python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/train_ship --fold_role TRAIN
-# python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/train --export_umap --fold_role TRAIN
-
-# python test/test_latent_separability.py --models /data/models/*.ts --output_dir ./result/latent_analysis/val_ship --fold_role VALIDATION
-# python test/test_latent_separability.py --models /data/models/*.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val --fold_role VALIDATION
-
-# python test/test_latent_extrapolations.py --models /data/models/*.ts --umap-dir ./result/latent_analysis/train --fold_role VALIDATION --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross
-
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch1_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch1 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch1_ep10000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_ep10000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_ep10000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch50_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch50 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch50_ep10000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_ep10000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/default_ep10000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename default --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_default_ep10000.pkl
+# python test/test_svdd_metrics.py --svdd-model ./result/svdd/models/mel/ --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave/ --ie-representation spectral --output-dir ./result/svdd/metrics/mel-rave
 
 
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch1_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch50_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch50_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch50_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/default_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename default_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_default_ep1000.pkl
+################ Evaluate model steps during VAE training
 
+python test/eval_vae_loss_over_training.py --model-dir /data/models/vae_steps/ --output-dir ./result/training_steps_vae_evaluation/vae_latent_classification
 
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch5_s1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch5_s1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch5_s1_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_s1_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_s1_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_s1_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch10_s5_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch10_s5_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch10_s5_ep1000.pkl
-# python test/test_latent_extrapolation.py --ie-latent-model /data/models/ch100_s50_ep1000.ts --ie-target "NAME_(US)" --output_dir ./result/latent_analysis/val_cross --output_filename ch100_s50_ep1000 --fold_role VALIDATION --umap-model ./result/latent_analysis/train/umap_ch100_s50_ep1000.pkl
+python test/eval_vae_classification_over_training.py --model-dir /data/models/vae_steps/ --output-dir ./result/training_steps_vae_evaluation/vae_latent_classification/ship
 
-# time python scripts/train.py --config ./configs/cls_0.gin --db_path ./runs/dataset/ --out_path ./runs/models/test1 --name default --channels 1 --workers 1 --batch 32 --max_steps 300
-
-# python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --models /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/train_ship --export_umap --fold_role TRAIN
-
-# python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --models /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/val_ship --export_umap --fold_role VALIDATION
-
-# python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/train --export_umap --fold_role TRAIN
-
-# python test/test_latent_separability.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --models /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/val --export_umap --fold_role VALIDATION
-
-# python test/test_latent_extrapolation.py --ie-dataset-dir /data/iemanja_fixed/ --ie-latent-model /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/val_ship_cross --fold_role VALIDATION --umap-model ./result/cls2_ch_no_demon/train_ship/umap_cls2_ch_no_demon.pkl
-
-# python test/test_latent_extrapolation.py --ie-dataset-dir /data/iemanja_fixed/ --ie-target "NAME_(US)" --ie-latent-model /data/models/cls2_ch_no_demon.ts --output_dir ./result/cls2_ch_no_demon/val_cross --fold_role VALIDATION --umap-model ./result/cls2_ch_no_demon/train/umap_cls2_ch_no_demon.pkl
-
-# python scripts/train.py --config ./configs/cls10.gin --db_path ./runs/dataset_channel/ --out_path ./runs/models/cls2_ch_no_demon --name cls2_ch_no_demon --channels 1 --workers 1 --batch 32 --max_steps 25000 --save_every 25000 --gpu 0
-
-# python test/test_ldm.py --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10
-
-# python test/test_ldm_eval.py --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best-v1.ckpt
-
-
-
-
-# python test/test_latent_separability.py  --ie-target "NAME_(US)" --models /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --export_umap --fold_role TRAIN
-
-# python test/test_latent_extrapolation.py  --ie-target "NAME_(US)" --ie-latent-model /data/models/cls_5_5M_95.ts --output_dir ./result/cls_5_5M/cls_5_5M_95/train --fold_role VALIDATION --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
-
-
-
-# python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --ldm-checkpoint ./result/ldm_test/cls5/0-1/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
-
-
-# python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/0-1 --early-stopping-patience 10 --fixed-input-channel 0 --fixed-output-channel 1
-
-
-# python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --early-stopping-patience 10 --fixed-input-channel 1 --fixed-output-channel 0
-
-# python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_test/cls5/1-0 --ldm-checkpoint ./result/ldm_test/cls5/1-0/best.ckpt --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
-
-
-
-# python test/test_ldm.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --early-stopping-patience 10 --channel-mode VARIABLE
-
-# python test/test_ldm_eval.py --ie-latent-model /data/models/cls_5_5M_95.ts --output-dir ./result/ldm_cls_5_5M_95/variable_dist --ldm-checkpoint "./result/ldm_cls_5_5M_95/variable_dist/best.ckpt" --umap-model ./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl
+python test/eval_vae_classification_over_training.py --ie-target "NAME_(US)" --model-dir /data/models/vae_steps/ --output-dir ./result/training_steps_vae_evaluation/vae_latent_classification/channel

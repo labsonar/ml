@@ -1,0 +1,86 @@
+#!/bin/bash
+set -e
+
+MODEL="$1"
+
+if [ -z "$MODEL" ]; then
+    echo "Usage: $0 <model> (/path/rave.ts)"
+    exit 1
+fi
+
+VAE_DATASET="/data/iemanja_vae/${MODEL}"
+
+echo "========= Reconstruct dataset ========= "
+if [ ! -f "${VAE_DATASET}/data/999.wav" ]; then
+    python app/iemanja_vae_reconstructor.py --model /data/models/${MODEL}.ts
+else
+    echo "Dataset already reconstructed: ${VAE_DATASET}"
+fi
+
+echo ""
+echo "========= Train classifiers on original dataset ========= "
+if [ ! -f "./result/vae_classifiers/models/ship/original/best.ckpt" ]; then
+    echo "Training original ship classifier"
+    python app/iemanja_classifier.py \
+        --ie-target CLASS \
+        --ie-representation spectral \
+        --output_dir ./result/vae_classifiers/models/ship/original \
+        --ie-dataset-dir /data/iemanja_truncated
+else
+    echo "Original ship classifier already trained"
+fi
+
+if [ ! -f "./result/vae_classifiers/models/channel/original/best.ckpt" ]; then
+    echo "Training original channel classifier"
+    python app/iemanja_classifier.py \
+        --ie-target "NAME_(US)" \
+        --ie-representation spectral \
+        --output_dir ./result/vae_classifiers/models/channel/original \
+        --ie-dataset-dir /data/iemanja_truncated
+else
+    echo "Original channel classifier already trained"
+fi
+
+echo ""
+echo "========= Train classifiers on reconstructed dataset ========= "
+if [ ! -f "./result/vae_classifiers/models/ship/${MODEL}/best.ckpt" ]; then
+    echo "Training reconstructed ship classifier: ${MODEL}"
+    python app/iemanja_classifier.py \
+        --ie-target CLASS \
+        --ie-representation spectral \
+        --output_dir "./result/vae_classifiers/models/ship/${MODEL}" \
+        --ie-dataset-dir "${VAE_DATASET}"
+else
+    echo "Reconstructed ship classifier already trained: ${MODEL}"
+fi
+
+if [ ! -f "./result/vae_classifiers/models/channel/${MODEL}/best.ckpt" ]; then
+    echo "Training reconstructed channel classifier: ${MODEL}"
+    python app/iemanja_classifier.py \
+        --ie-target "NAME_(US)" \
+        --ie-representation spectral \
+        --output_dir "./result/vae_classifiers/models/channel/${MODEL}" \
+        --ie-dataset-dir "${VAE_DATASET}"
+else
+    echo "Reconstructed channel classifier already trained: ${MODEL}"
+fi
+
+echo ""
+echo "========= Cross evaluation ========= "
+python app/iemanja_vae_cross_classifier.py \
+    --ie-representation spectral \
+    --ie-target CLASS \
+    --model1 ./result/vae_classifiers/models/ship/original \
+    --dataset1-dir /data/iemanja_truncated \
+    --model2 "./result/vae_classifiers/models/ship/${MODEL}" \
+    --dataset2-dir "${VAE_DATASET}" \
+    --output-dir "./result/vae_classifiers/cross_comparison/${MODEL}/ship"
+
+python app/iemanja_vae_cross_classifier.py \
+    --ie-representation spectral \
+    --ie-target "NAME_(US)" \
+    --model1 ./result/vae_classifiers/models/channel/original \
+    --dataset1-dir /data/iemanja_truncated \
+    --model2 "./result/vae_classifiers/models/channel/${MODEL}" \
+    --dataset2-dir "${VAE_DATASET}" \
+    --output-dir "./result/vae_classifiers/cross_comparison/${MODEL}/channel"

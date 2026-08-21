@@ -121,7 +121,7 @@ def _main():
     ml_utils.set_seed()
     device = ml_device.get_available_device()
 
-    model_ids = ["ch1", "ch5", "ch10", "ch50", "ch100", "ch5_s1", "ch10_s1", "ch10_s5", "ch100_s50", "default"]
+    model_ids = ["ch5", "ch5_s1", "default"]
     steps = [200, 400, 600, 800, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]
 
     # Dataset built with the existing structures, raw waveforms only

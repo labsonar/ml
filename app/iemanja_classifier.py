@@ -151,13 +151,13 @@ def _main():
 
             callbacks = [
                 checkpoint_cb,
-                lightning_call.EarlyStopping(
-                    monitor="val/loss",
-                    min_delta=args.early_stopping_min_delta,
-                    patience=args.early_stopping_patience,
-                    verbose=True,
-                    mode="min"
-                ),
+                # lightning_call.EarlyStopping(
+                #     monitor="val/loss",
+                #     min_delta=args.early_stopping_min_delta,
+                #     patience=args.early_stopping_patience,
+                #     verbose=True,
+                #     mode="min"
+                # ),
                 lightning_call.LearningRateMonitor(logging_interval='epoch'),
             ]
 
