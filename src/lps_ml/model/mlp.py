@@ -40,7 +40,7 @@ class MLP(lightning.LightningModule):
 
         if loss_fn is None:
             if n_outputs == 1:
-                loss_fn = torch.nn.BCEWithLogitsLoss
+                loss_fn = torch.nn.BCELoss
             else:
                 loss_fn = torch.nn.CrossEntropyLoss
 

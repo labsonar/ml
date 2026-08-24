@@ -3,6 +3,9 @@
 
 python app/iemanja_vs_vae_classifier.py --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave --ie-representation spectral
 
+python app/iemanja_classifier.py --model mlp --ie-target CLASS --ie-representation latent --output_dir ./result/vae_classifiers/latent/rave/ship --ie-dataset-dir /data/iemanja_truncated --ie-latent-model /data/models/rave.ts
+python app/iemanja_classifier.py --model mlp --ie-target "NAME_(US)" --ie-representation latent --output_dir ./result/vae_classifiers/latent/rave/channel --ie-dataset-dir /data/iemanja_truncated --ie-latent-model /data/models/rave.ts
+
 # app/eval_vae_classifier rave mel
 # app/eval_vae_classifier rave time
 # app/eval_vae_classifier combined_3M mel

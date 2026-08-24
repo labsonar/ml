@@ -68,7 +68,7 @@ def _main():
         help="Minimum improvement required to reset the early stopping counter.")
     parser.add_argument("--early-stopping-patience", type=int, default=200,
         help="Number of validation epochs without improvement before stopping.")
-    parser.add_argument("--model", choices=["cnn1d", "cnn2d"], default="cnn2d",
+    parser.add_argument("--model", choices=["mlp", "cnn1d", "cnn2d"], default="cnn2d",
         help="CNN architecture to use.")
     parser.add_argument("--output_dir", type=str, default="./result/classifier",
         help="Output directory for results.")
@@ -119,7 +119,26 @@ def _main():
 
         else:
 
-            if args.model == "cnn1d":
+            if args.model == "mlp":
+
+                model = ml_model.MLP(
+                    input_shape=dm.get_sample_shape(),
+
+                    hidden_channels=[128, 32],
+
+                    n_targets=dm.get_n_targets(),
+
+                    norm_layer=torch.nn.BatchNorm1d,
+                    activation_layer=torch.nn.ReLU,
+                    activation_output_layer=torch.nn.Sigmoid,
+
+                    dropout=0.4,
+
+                    lr=args.lr,
+                    weight_decay=args.weight_decay,
+                )
+
+            elif args.model == "cnn1d":
                 model = ml_model.CNN1D(
                     input_shape=dm.get_sample_shape(),
 
@@ -208,7 +227,9 @@ def _main():
             shutil.copy2(checkpoint_cb.best_model_path, model_best)
 
 
-        if args.model == "cnn1d":
+        if args.model == "mlp":
+            best_model = ml_model.MLP.load_from_checkpoint(model_best)
+        elif args.model == "cnn1d":
             best_model = ml_model.CNN1D.load_from_checkpoint(model_best)
         else:
             best_model = ml_model.CNN2D.load_from_checkpoint(model_best)
