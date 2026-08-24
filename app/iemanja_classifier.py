@@ -61,12 +61,15 @@ def _main():
     parser.add_argument("--max-epochs", type=int, default=2000,
                         help="Maximum number of training epochs.")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate.")
+    parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay.")
     parser.add_argument("--only-info", action="store_true", help="Only print database info")
     parser.add_argument("--paired", action="store_true", help="Only print database info")
     parser.add_argument("--early-stopping-min-delta", type=float, default=0.001,
         help="Minimum improvement required to reset the early stopping counter.")
     parser.add_argument("--early-stopping-patience", type=int, default=200,
         help="Number of validation epochs without improvement before stopping.")
+    parser.add_argument("--model", choices=["cnn1d", "cnn2d"], default="cnn2d",
+        help="CNN architecture to use.")
     parser.add_argument("--output_dir", type=str, default="./result/classifier",
         help="Output directory for results.")
     builder.add_argparse_args(parser=parser)
@@ -116,29 +119,56 @@ def _main():
 
         else:
 
-            model = ml_model.CNN2D(
-                input_shape=dm.get_sample_shape(),
+            if args.model == "cnn1d":
+                model = ml_model.CNN1D(
+                    input_shape=dm.get_sample_shape(),
 
-                # Feature extractor
-                conv_n_neurons=[128, 64],
-                conv_activation=torch.nn.LeakyReLU,
-                conv_pooling=torch.nn.MaxPool2d,
-                conv_pooling_size=[2, 2],
-                conv_dropout=0.4,
-                batch_norm=torch.nn.BatchNorm2d,
-                kernel_size=5,
+                    # Feature extractor
+                    conv_n_neurons=[4, 8, 16, 32],
+                    conv_activation=torch.nn.LeakyReLU,
+                    conv_pooling=torch.nn.MaxPool1d,
+                    conv_pooling_size=[4, 4, 4, 4],
+                    conv_dropout=0.4,
+                    batch_norm=torch.nn.BatchNorm1d,
+                    kernel_size=5,
 
-                # Classification head
-                classification_n_neurons=32,
-                n_targets=dm.get_n_targets(),
-                classification_dropout=0.4,
-                classification_norm=None,
-                classification_hidden_activation=torch.nn.ReLU,
-                classification_output_activation=torch.nn.Sigmoid,
+                    # Classification head
+                    classification_n_neurons=64,
+                    n_targets=dm.get_n_targets(),
+                    classification_dropout=0.4,
+                    classification_norm=None,
+                    classification_output_activation=torch.nn.Sigmoid,
 
-                # Optimization
-                lr=1e-6,
-            )
+                    # Optimization
+                    lr=args.lr,
+                )
+
+            else:
+
+                model = ml_model.CNN2D(
+                    input_shape=dm.get_sample_shape(),
+
+                    # Feature extractor
+                    conv_n_neurons=[16, 32, 64],
+                    conv_activation=torch.nn.ReLU,
+                    conv_pooling=None,
+                    conv_pooling_size=[4, 2],
+                    conv_dropout=0.5,
+                    batch_norm=torch.nn.BatchNorm2d,
+                    kernel_size=5,
+
+                    # Classification head
+                    classification_n_neurons=32,
+                    n_targets=dm.get_n_targets(),
+                    classification_dropout=0.5,
+                    classification_norm=None,
+                    classification_hidden_activation=torch.nn.ReLU,
+                    classification_output_activation=torch.nn.Sigmoid,
+
+                    # Optimization
+                    lr=args.lr,
+                    weight_decay=args.weight_decay
+                )
 
             checkpoint_cb = lightning_call.ModelCheckpoint(
                 dirpath=log_dir,
@@ -177,7 +207,12 @@ def _main():
             shutil.copy2(checkpoint_cb.last_model_path, model_last)
             shutil.copy2(checkpoint_cb.best_model_path, model_best)
 
-        best_model = ml_model.CNN2D.load_from_checkpoint(model_best)
+
+        if args.model == "cnn1d":
+            best_model = ml_model.CNN1D.load_from_checkpoint(model_best)
+        else:
+            best_model = ml_model.CNN2D.load_from_checkpoint(model_best)
+
         best_model.eval()
 
         train_bal_acc, train_f1 = _evaluate_accuracy(best_model, dm.train_dataloader())

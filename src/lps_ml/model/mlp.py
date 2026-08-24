@@ -23,6 +23,7 @@ class MLP(lightning.LightningModule):
             bias: bool = True,
             dropout: float = 0.0,
             lr: float = 1e-3,
+            weight_decay: float = 1e-4
         ):
         super().__init__()
 
@@ -70,6 +71,7 @@ class MLP(lightning.LightningModule):
         self.model = torch.nn.Sequential(*layers)
         self.loss_fn = loss_fn()
         self.lr = lr
+        self.weight_decay = weight_decay
         self.is_binary = n_outputs == 1
 
     #pylint: disable=W0221
@@ -114,5 +116,5 @@ class MLP(lightning.LightningModule):
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """ Defines and returns the optimizer used during training. """
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         return optimizer

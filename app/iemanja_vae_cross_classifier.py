@@ -56,9 +56,9 @@ import lps_ml.datasets as ml_db
 import lps_ml.utils.device as ml_device
 import lps_ml.utils.general as ml_utils
 
-def load_model(path: str):
+def load_model(path: str, model_type: str):
     """
-    Load a CNN2D model from a checkpoint.
+    Load a CNN1D or CNN2D model from a checkpoint.
     """
 
     if os.path.isdir(path):
@@ -67,9 +67,19 @@ def load_model(path: str):
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
 
-    print(f"Loading model: {path}")
+    if model_type == "cnn1d":
+        model_class = ml_model.CNN1D
+    elif model_type == "cnn2d":
+        model_class = ml_model.CNN2D
+    else:
+        raise ValueError(
+            f"Unknown model type: {model_type}"
+        )
 
-    model = ml_model.CNN2D.load_from_checkpoint(path)
+    print(f"Loading model: {path}")
+    print(f"Model type: {model_type}")
+
+    model = model_class.load_from_checkpoint(path)
     model.eval()
 
     return model
@@ -291,6 +301,20 @@ def _main():
     )
 
     parser.add_argument(
+        "--model1-type",
+        choices=["cnn1d", "cnn2d"],
+        default="cnn2d",
+        help="Architecture used by model 1."
+    )
+
+    parser.add_argument(
+        "--model2-type",
+        choices=["cnn1d", "cnn2d"],
+        default="cnn2d",
+        help="Architecture used by model 2."
+    )
+
+    parser.add_argument(
         "--output-dir",
         type=str,
         default="./result/classifier_comparison",
@@ -329,8 +353,8 @@ def _main():
 
     print("=" * 70)
 
-    model1 = load_model(args.model1)
-    model2 = load_model(args.model2)
+    model1 = load_model(args.model1, args.model1_type)
+    model2 = load_model(args.model2, args.model2_type)
 
 
     print()
