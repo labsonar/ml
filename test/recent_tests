@@ -1,12 +1,14 @@
 #!/bin/bash
 # tensorboard --logdir . --port 8888 --bind_all
 
-app/eval_vae_classifier rave mel
-app/eval_vae_classifier rave time
-app/eval_vae_classifier combined_3M mel
-app/eval_vae_classifier combined_3M time
-app/eval_vae_classifier rave_99 mel
-app/eval_vae_classifier rave_99 time
+python app/iemanja_vs_vae_classifier.py --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave --ie-representation spectral
+
+# app/eval_vae_classifier rave mel
+# app/eval_vae_classifier rave time
+# app/eval_vae_classifier combined_3M mel
+# app/eval_vae_classifier combined_3M time
+# app/eval_vae_classifier rave_99 mel
+# app/eval_vae_classifier rave_99 time
 
 
 # python test/test_svdd.py --ie-representation spectral --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/mel
