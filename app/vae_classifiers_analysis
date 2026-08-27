@@ -20,21 +20,21 @@ fi
 app/eval_vae_classifier "${MODEL}" 1d
 app/eval_vae_classifier "${MODEL}" 2d
 
-python app/iemanja_vs_vae_classifier.py \
+python app/vae_vs_original.py \
     --dataset1-dir "$ORIGINAL_DATASET" \
     --dataset2-dir "$VAE_DATASET" \
     --ie-representation raw \
     --model cnn1d \
     --output-dir "./result/vae_classifiers/original_vs_reconstructed/${MODEL}/time"
 
-python app/iemanja_vs_vae_classifier.py \
+python app/vae_vs_original.py \
     --dataset1-dir "$ORIGINAL_DATASET" \
     --dataset2-dir "$VAE_DATASET" \
     --ie-representation spectral \
     --model cnn2d \
     --output-dir "./result/vae_classifiers/original_vs_reconstructed/${MODEL}/spectral"
 
-python app/iemanja_classifier.py \
+python app/train_classifier.py \
     --ie-target CLASS \
     --ie-representation latent \
     --model mlp \
@@ -42,7 +42,7 @@ python app/iemanja_classifier.py \
     --ie-dataset-dir "$ORIGINAL_DATASET" \
     --ie-latent-model "$VAE_MODEL"
 
-python app/iemanja_classifier.py \
+python app/train_classifier.py \
     --model mlp \
     --ie-target "NAME_(US)" \
     --ie-representation latent \
