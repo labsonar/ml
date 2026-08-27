@@ -2,19 +2,11 @@
 Module containing a Convolutional Neural Network (CNN) based models.
 """
 import typing
+import argparse
 import torch
 
+import lps_ml.core.datamodule as ml_core
 import lps_ml.model.mlp as lps_mlp
-from lps_utils.log import warning
-
-"""
-Module containing Convolutional Neural Network (CNN) based models.
-"""
-import typing
-import torch
-
-import lps_ml.model.mlp as lps_mlp
-
 
 class CNN1D(lps_mlp.MLP):
     """CNN with MLP head, compatible with binary or multiclass classification."""
@@ -64,15 +56,23 @@ class CNN1D(lps_mlp.MLP):
 
         if isinstance(conv_dilation, int):
             conv_dilation = [conv_dilation] * len(conv_n_neurons)
-
-        if len(conv_dilation) != len(conv_n_neurons):
-            raise ValueError("conv_dilation must have the same length as conv_n_neurons.")
+        elif len(conv_dilation) == 1:
+            conv_dilation = conv_dilation * len(conv_n_neurons)
+        elif len(conv_dilation) != len(conv_n_neurons):
+            raise ValueError(
+                "conv_dilation must contain either one value "
+                "or one value per convolutional layer."
+            )
 
         if isinstance(conv_pooling_size, int):
             conv_pooling_size = [conv_pooling_size] * len(conv_n_neurons)
-
-        if len(conv_pooling_size) != len(conv_n_neurons):
-            raise ValueError("conv_pooling_size must have the same length as conv_n_neurons.")
+        elif len(conv_pooling_size) == 1:
+            conv_pooling_size = conv_pooling_size * len(conv_n_neurons)
+        elif len(conv_pooling_size) != len(conv_n_neurons):
+            raise ValueError(
+                "conv_pooling_size must contain either one value "
+                "or one value per convolutional layer."
+            )
 
         if padding is None:
             padding = (kernel_size - 1) // 2
@@ -158,6 +158,111 @@ class CNN1D(lps_mlp.MLP):
         out = super().forward(features)
         return out
 
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+        """Add CNN1D arguments to an argparse parser."""
+
+        group = parser.add_argument_group("CNN1D")
+
+        group.add_argument( "--cnn1d-conv-n-neurons", type=int, nargs="+", default=[4, 8, 16, 32],
+            help="Number of filters in each convolutional layer."
+        )
+
+        group.add_argument( "--cnn1d-conv-activation", type=str, default="relu",
+            choices=["relu", "leaky_relu", "gelu", "tanh"],
+        )
+
+        group.add_argument( "--cnn1d-conv-pooling", type=str, default="max_pool",
+            choices=["max_pool", "avg_pool", "none"],
+        )
+
+        group.add_argument( "--cnn1d-conv-pooling-size", type=int, nargs="+", default=[2])
+        group.add_argument( "--cnn1d-conv-dilation", type=int, nargs="+", default=[1])
+        group.add_argument( "--cnn1d-conv-dropout", type=float, default=0.5)
+
+        group.add_argument( "--cnn1d-batch-norm", type=str, default="batch_norm",
+            choices=["batch_norm", "none"],
+        )
+
+        group.add_argument( "--cnn1d-kernel-size", type=int, default=5)
+        group.add_argument( "--cnn1d-padding", type=int, default=None)
+        group.add_argument( "--cnn1d-classification-n-neurons", type=int, nargs="+", default=[64])
+        group.add_argument( "--cnn1d-classification-dropout", type=float, default=0.0)
+
+        group.add_argument( "--cnn1d-classification-norm", type=str, default="batch_norm",
+            choices=["batch_norm", "none"],
+        )
+
+        group.add_argument( "--cnn1d-classification-hidden-activation", type=str, default=None,
+            choices=["relu", "leaky_relu", "gelu", "tanh"],
+        )
+
+        group.add_argument( "--cnn1d-classification-output-activation", type=str, default="sigmoid",
+            choices=["sigmoid", "softmax", "none"],
+        )
+
+        group.add_argument( "--cnn1d-lr", type=float, default=1e-3)
+        group.add_argument( "--cnn1d-weight-decay", type=float, default=1e-4)
+
+        return group
+
+    @staticmethod
+    def from_args(args: argparse.Namespace, dm: ml_core.BaseDataModule) -> "CNN1D":
+        """Create a CNN1D from command-line arguments."""
+
+        activations = {
+            "relu": torch.nn.ReLU,
+            "leaky_relu": torch.nn.LeakyReLU,
+            "gelu": torch.nn.GELU,
+            "tanh": torch.nn.Tanh,
+        }
+
+        pooling = {
+            "max_pool": torch.nn.MaxPool1d,
+            "avg_pool": torch.nn.AvgPool1d,
+            "none": None,
+        }
+
+        norm = {
+            "batch_norm": torch.nn.BatchNorm1d,
+            "none": None,
+        }
+
+        output_activation = {
+            "sigmoid": torch.nn.Sigmoid,
+            "softmax": torch.nn.Softmax,
+            "none": None,
+        }
+
+        hidden_activation = (
+            activations[args.cnn1d_classification_hidden_activation]
+            if args.cnn1d_classification_hidden_activation is not None
+            else None
+        )
+
+        return CNN1D(
+            input_shape=dm.get_sample_shape(),
+            n_targets=dm.get_n_targets(),
+            conv_n_neurons=args.cnn1d_conv_n_neurons,
+            conv_activation=activations[args.cnn1d_conv_activation],
+            conv_pooling=pooling[args.cnn1d_conv_pooling],
+            conv_pooling_size=args.cnn1d_conv_pooling_size,
+            conv_dilation=args.cnn1d_conv_dilation,
+            conv_dropout=args.cnn1d_conv_dropout,
+            batch_norm=norm[args.cnn1d_batch_norm],
+            kernel_size=args.cnn1d_kernel_size,
+            padding=args.cnn1d_padding,
+            classification_n_neurons=args.cnn1d_classification_n_neurons,
+            classification_dropout=args.cnn1d_classification_dropout,
+            classification_norm=norm[args.cnn1d_classification_norm],
+            classification_hidden_activation=hidden_activation,
+            classification_output_activation=output_activation[
+                args.cnn1d_classification_output_activation
+            ],
+            lr=args.cnn1d_lr,
+            weight_decay=args.cnn1d_weight_decay,
+        )
+
 class CNN2D(lps_mlp.MLP):
     """ CNN with MLP head, compatible with binary or multiclass classification. """
 
@@ -204,6 +309,13 @@ class CNN2D(lps_mlp.MLP):
 
         if isinstance(conv_dilation, int):
             conv_dilation = [conv_dilation] * len(conv_n_neurons)
+        elif len(conv_dilation) == 1:
+            conv_dilation = conv_dilation * len(conv_n_neurons)
+        elif len(conv_dilation) != len(conv_n_neurons):
+            raise ValueError(
+                "conv_dilation must contain either one value "
+                "or one value per convolutional layer."
+            )
 
         conv_layers = []
         conv_channels = [input_shape[0]] + conv_n_neurons
@@ -274,3 +386,114 @@ class CNN2D(lps_mlp.MLP):
         features = self.to_feature_space(inputs)
         out = super().forward(features)
         return out
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+        """Add CNN2D arguments to an argparse parser."""
+
+        group = parser.add_argument_group("CNN2D")
+
+        group.add_argument( "--cnn2d-conv-n-neurons", type=int, nargs="+", default=[16, 32, 64])
+
+        group.add_argument( "--cnn2d-conv-activation", type=str, default="relu",
+            choices=["relu", "leaky_relu", "gelu", "tanh"],
+        )
+
+        group.add_argument( "--cnn2d-conv-pooling", type=str, default="max_pool",
+            choices=["max_pool", "avg_pool", "none"],
+        )
+
+        group.add_argument( "--cnn2d-conv-pooling-size", type=int, nargs="+", default=[4, 2])
+        group.add_argument( "--cnn2d-conv-dilation", type=int, nargs="+", default=[1])
+        group.add_argument( "--cnn2d-conv-dropout", type=float, default=0.5)
+
+        group.add_argument( "--cnn2d-batch-norm", type=str, default="batch_norm",
+            choices=["batch_norm", "none"],
+        )
+
+        group.add_argument( "--cnn2d-kernel-size", type=int, default=5)
+        group.add_argument( "--cnn2d-padding", type=int, default=None)
+        group.add_argument( "--cnn2d-classification-n-neurons", type=int, nargs="+", default=[64, 32])
+        group.add_argument( "--cnn2d-n-targets", type=int, default=2)
+        group.add_argument( "--cnn2d-classification-dropout", type=float, default=0.0)
+
+        group.add_argument( "--cnn2d-classification-norm", type=str, default="batch_norm",
+            choices=["batch_norm", "none"],
+        )
+
+        group.add_argument( "--cnn2d-classification-hidden-activation", type=str, default=None,
+            choices=["relu", "leaky_relu", "gelu", "tanh"],
+        )
+
+        group.add_argument( "--cnn2d-classification-output-activation", type=str, default="sigmoid",
+            choices=["sigmoid", "softmax", "none"],
+        )
+
+        group.add_argument( "--cnn2d-lr", type=float, default=1e-3)
+        group.add_argument( "--cnn2d-weight-decay", type=float, default=1e-4)
+
+        return group
+
+    @staticmethod
+    def from_args(args: argparse.Namespace, dm: ml_core.BaseDataModule) -> "CNN2D":
+        """Create a CNN2D from command-line arguments."""
+
+        activations = {
+            "relu": torch.nn.ReLU,
+            "leaky_relu": torch.nn.LeakyReLU,
+            "gelu": torch.nn.GELU,
+            "tanh": torch.nn.Tanh,
+        }
+
+        pooling = {
+            "max_pool": torch.nn.MaxPool2d,
+            "avg_pool": torch.nn.AvgPool2d,
+            "none": None,
+        }
+
+        norm = {
+            "batch_norm": torch.nn.BatchNorm2d,
+            "none": None,
+        }
+
+        classification_norm = {
+            "batch_norm": torch.nn.BatchNorm1d,
+            "none": None,
+        }
+
+        output_activation = {
+            "sigmoid": torch.nn.Sigmoid,
+            "softmax": torch.nn.Softmax,
+            "none": None,
+        }
+
+        hidden_activation = (
+            activations[args.cnn2d_classification_hidden_activation]
+            if args.cnn2d_classification_hidden_activation is not None
+            else None
+        )
+
+        return CNN2D(
+            input_shape=dm.get_sample_shape(),
+            n_targets=dm.get_n_targets(),
+            conv_n_neurons=args.cnn2d_conv_n_neurons,
+            conv_activation=activations[args.cnn2d_conv_activation],
+            conv_pooling=pooling[args.cnn2d_conv_pooling],
+            conv_pooling_size=args.cnn2d_conv_pooling_size,
+            conv_dilation=args.cnn2d_conv_dilation,
+            conv_dropout=args.cnn2d_conv_dropout,
+            batch_norm=norm[args.cnn2d_batch_norm],
+            kernel_size=args.cnn2d_kernel_size,
+            padding=args.cnn2d_padding,
+            classification_n_neurons=args.cnn2d_classification_n_neurons,
+            classification_dropout=args.cnn2d_classification_dropout,
+            classification_norm=classification_norm[
+                args.cnn2d_classification_norm
+            ],
+            classification_hidden_activation=hidden_activation,
+            classification_output_activation=output_activation[
+                args.cnn2d_classification_output_activation
+            ],
+            lr=args.cnn2d_lr,
+            weight_decay=args.cnn2d_weight_decay,
+        )

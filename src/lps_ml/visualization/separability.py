@@ -55,6 +55,45 @@ def flatten_if_needed(x: np.ndarray) -> np.ndarray:
         # return x.mean(axis=-1)
     return x
 
+def extract_latent_and_labels(loader, latent_mode: str = "flatten") -> \
+    typing.Tuple[np.ndarray, np.ndarray]:
+    """
+    Iterate a DataLoader of (x, y) latent batches and stack everything into
+    flat numpy arrays, ready for t-SNE/UMAP/separability metrics.
+    """
+    all_data = []
+    all_labels = []
+
+    for x, y in loader:
+
+        if isinstance(x, torch.Tensor):
+            x = x.detach().cpu().numpy()
+
+        if isinstance(y, torch.Tensor):
+            y = y.detach().cpu().numpy()
+
+        if x.ndim > 2:
+
+            if latent_mode == "flatten":
+                x = x.reshape(x.shape[0], -1)
+
+            elif latent_mode == "mean":
+                x = x.mean(axis=-1)
+
+            elif latent_mode == "split":
+                b, d, t = x.shape
+                x = np.transpose(x, (0, 2, 1))
+                x = x.reshape(b * t, d)
+                y = np.repeat(y, t)
+
+            else:
+                raise ValueError(f"Unknown latent_mode: {latent_mode}")
+
+        all_data.append(x)
+        all_labels.append(y)
+
+    return np.vstack(all_data), np.concatenate(all_labels)
+
 
 class SeparabilityMetric(abc.ABC):
 
@@ -103,16 +142,6 @@ class SeparabilityMetric(abc.ABC):
 
         return results
 
-class SilhouetteScore(SeparabilityMetric):
-
-    def compute(self, x: np.ndarray, labels: np.ndarray) -> float:
-        return float(sk_metrics.silhouette_score(x, labels))
-
-class DaviesBouldinIndex(SeparabilityMetric):
-
-    def compute(self, x: np.ndarray, labels: np.ndarray) -> float:
-        return float(sk_metrics.davies_bouldin_score(x, labels))
-
 class KNNConsistency(SeparabilityMetric):
 
     def __init__(self, k: int = 20, metric: str = "euclidean"):
@@ -135,8 +164,6 @@ class KNNConsistency(SeparabilityMetric):
         return float(consistency_per_sample.mean())
 
 class Separability(enum.Enum):
-    SILHOUETTE = SilhouetteScore
-    DAVIES_BOULDIN = DaviesBouldinIndex
     KNN = KNNConsistency
 
     def get(self) -> SeparabilityMetric:

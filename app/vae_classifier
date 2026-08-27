@@ -1,0 +1,51 @@
+#!/bin/bash
+set -e
+
+MODEL="$1"
+
+if [ -z "$MODEL" ]; then
+    echo "Usage: $0 <model>"
+    exit 1
+fi
+
+VAE_MODEL="/data/models/${MODEL}.ts"
+VAE_DATASET="/data/iemanja_vae/${MODEL}"
+ORIGINAL_DATASET="/data/iemanja_truncated"
+
+if [ ! -f "$VAE_MODEL" ]; then
+    echo "Error: VAE model not found: $VAE_MODEL"
+    exit 1
+fi
+
+app/eval_vae_classifier "${MODEL}" 1d
+app/eval_vae_classifier "${MODEL}" 2d
+
+python app/iemanja_vs_vae_classifier.py \
+    --dataset1-dir "$ORIGINAL_DATASET" \
+    --dataset2-dir "$VAE_DATASET" \
+    --ie-representation raw \
+    --model cnn1d \
+    --output-dir "./result/vae_classifiers/original_vs_reconstructed/${MODEL}/time"
+
+python app/iemanja_vs_vae_classifier.py \
+    --dataset1-dir "$ORIGINAL_DATASET" \
+    --dataset2-dir "$VAE_DATASET" \
+    --ie-representation spectral \
+    --model cnn2d \
+    --output-dir "./result/vae_classifiers/original_vs_reconstructed/${MODEL}/spectral"
+
+python app/iemanja_classifier.py \
+    --ie-target CLASS \
+    --ie-representation latent \
+    --model mlp \
+    --output-dir "./result/vae_classifiers/trained_models/latent/${MODEL}/ship" \
+    --ie-dataset-dir "$ORIGINAL_DATASET" \
+    --ie-latent-model "$VAE_MODEL"
+
+python app/iemanja_classifier.py \
+    --model mlp \
+    --ie-target "NAME_(US)" \
+    --ie-representation latent \
+    --output-dir "./result/vae_classifiers/trained_models/latent/${MODEL}/channel" \
+    --ie-dataset-dir "$ORIGINAL_DATASET" \
+    --ie-latent-model "$VAE_MODEL"

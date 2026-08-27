@@ -386,12 +386,12 @@ def _main():
         print("=" * 70)
 
         if split == "val":
-            loader1 = dm1.val_dataloader(shuffle=False)
-            loader2 = dm2.val_dataloader(shuffle=False)
+            loader1 = dm1.val_dataloader()
+            loader2 = dm2.val_dataloader()
 
         else:
-            loader1 = dm1.test_dataloader(shuffle=False)
-            loader2 = dm2.test_dataloader(shuffle=False)
+            loader1 = dm1.test_dataloader()
+            loader2 = dm2.test_dataloader()
 
         evaluations = [
             (

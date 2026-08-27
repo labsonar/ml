@@ -1,12 +1,15 @@
 """
 Module containing a Multi-Layer Perceptron (MLP) based models.
 """
+import argparse
 import functools
 import typing
 import torch
 import torch.nn
 
 import lightning
+
+import lps_ml.core.datamodule as ml_core
 
 class MLP(lightning.LightningModule):
     """ Multi-Layer Perceptron (MLP) implemented using PyTorch Lightning. """
@@ -118,3 +121,88 @@ class MLP(lightning.LightningModule):
         """ Defines and returns the optimizer used during training. """
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         return optimizer
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+        """Add MLP arguments to an argparse parser."""
+
+        group = parser.add_argument_group("MLP")
+
+        group.add_argument("--mlp-hidden-channels", type=int, nargs="+", default=[128, 32],
+            help="Number of neurons in each hidden layer."
+        )
+
+        group.add_argument("--mlp-norm", type=str, default="batch_norm",
+            choices=["batch_norm", "none"], help="Normalization layer."
+        )
+
+        group.add_argument("--mlp-activation", type=str, default="relu",
+            choices=["relu", "leaky_relu", "gelu", "tanh"], help="Hidden activation function."
+        )
+
+        group.add_argument("--mlp-output-activation", type=str, default="sigmoid",
+            choices=["sigmoid", "softmax", "none"], help="Output activation function."
+        )
+
+        group.add_argument("--mlp-loss", type=str, default=None, choices=["bce", "cross_entropy"],
+            help="Loss function. If omitted, inferred from n_targets."
+        )
+
+        group.add_argument("--mlp-bias", action=argparse.BooleanOptionalAction, default=True,
+            help="Use bias in linear layers."
+        )
+
+        group.add_argument("--mlp-dropout", type=float, default=0.0, help="Dropout probability.")
+        group.add_argument("--mlp-lr", type=float, default=1e-3, help="Learning rate.")
+        group.add_argument("--mlp-weight-decay", type=float, default=1e-4, help="Weight decay.")
+
+        return group
+
+    @staticmethod
+    def from_args(args: argparse.Namespace, dm: ml_core.BaseDataModule) -> "MLP":
+        """Create an MLP from command-line arguments."""
+
+        norm_layers = {
+            "batch_norm": torch.nn.BatchNorm1d,
+            "none": None,
+        }
+
+        activation_layers = {
+            "relu": torch.nn.ReLU,
+            "leaky_relu": torch.nn.LeakyReLU,
+            "gelu": torch.nn.GELU,
+            "tanh": torch.nn.Tanh,
+        }
+
+        output_activation_layers = {
+            "sigmoid": torch.nn.Sigmoid,
+            "softmax": torch.nn.Softmax,
+            "none": None,
+        }
+
+        losses = {
+            "bce": torch.nn.BCELoss,
+            "cross_entropy": torch.nn.CrossEntropyLoss,
+        }
+
+        loss_fn = (
+            losses[args.mlp_loss]
+            if args.mlp_loss is not None
+            else None
+        )
+
+        return MLP(
+            input_shape=dm.get_sample_shape(),
+            n_targets=dm.get_n_targets(),
+            hidden_channels=args.mlp_hidden_channels,
+            norm_layer=norm_layers[args.mlp_norm],
+            activation_layer=activation_layers[args.mlp_activation],
+            activation_output_layer=output_activation_layers[
+                args.mlp_output_activation
+            ],
+            loss_fn=loss_fn,
+            bias=args.mlp_bias,
+            dropout=args.mlp_dropout,
+            lr=args.mlp_lr,
+            weight_decay=args.mlp_weight_decay,
+        )

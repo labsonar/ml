@@ -1,11 +1,14 @@
 import os
 import typing
+import shutil
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 import torch
 import lightning
 import lightning.pytorch.callbacks as lightning_call
+import lightning.pytorch.loggers as lightning_log
 
 import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
@@ -96,6 +99,7 @@ class PlotMetrics(lightning.Callback):
             plt.close()
 
 class SaveAudioSamples(lightning.Callback):
+    """ SaveAudioSamples on Difussion model training. """
 
     def __init__(
         self,
@@ -195,55 +199,74 @@ class SaveAudioSamples(lightning.Callback):
 
                     saved += 1
 
-def default_early_stop(patience : int = 100, min_delta: float = 0.001) -> lightning_call.Callback:
-    """ Early stopping callback to monitor the "value/loss" metric. """
-    return lightning_call.EarlyStopping(
-        monitor="val/loss",
-        min_delta=min_delta,
-        patience=patience,
-        verbose=True,
-        mode="min"
-    )
+class ExportableModelCheckpoint(lightning_call.ModelCheckpoint):
+    """ModelCheckpoint with stable best/last checkpoint paths."""
 
-def default_checkpoint(output_dir: str) -> lightning_call.ModelCheckpoint:
-    """ Model checkpoint callback to save the best model based on "val/loss" and also the last. """
-    return lightning_call.ModelCheckpoint(
-        dirpath=output_dir,
-        filename="best",
-        monitor="val/loss",
-        save_top_k=1,
-        mode="min",
-        save_last=True
-    )
+    def __init__(self, base_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-def default_callbacks(output_dir: str,
-                      patience : int = 100,
-                      min_delta: float = 0.001,
-                      n_audio_samples: int = 5) -> typing.List[lightning_call.Callback]:
-    """ Default training callbacks. """
+        self.base_path = base_path
+        self.best_path = os.path.join(base_path, "best.ckpt")
+        self.last_path = os.path.join(base_path, "last.ckpt")
 
-    checkpoint_cb = default_checkpoint(output_dir)
+        os.makedirs(self.base_path, exist_ok=True)
 
-    return [
-        # default_early_stop(patience=patience, min_delta=min_delta),
-        checkpoint_cb,
-        PlotMetrics(output_dir=output_dir),
-        SaveAudioSamples(
-            output_dir=output_dir,
-            n_samples=n_audio_samples,
-        ),
-    ]
+    def get_best(self) -> str:
+        """Return the stable path to the best checkpoint."""
+        return self.best_path
 
-def default_trainer(output_dir: str,
-                    max_epochs : int = 10000,
-                    check_val_every_n_epoch=1,
-                    patience : int = 100,
-                    min_delta: float = 0.001,
-                    n_audio_samples: int = 5) -> lightning.Trainer:
+    def get_last(self) -> str:
+        """Return the stable path to the last checkpoint."""
+        return self.last_path
+
+    def on_train_end(self, trainer, pl_module):
+        super().on_train_end(trainer, pl_module)
+
+        if self.best_model_path:
+            shutil.copy2(self.best_model_path, self.best_path)
+
+        if self.last_model_path:
+            shutil.copy2(self.last_model_path, self.last_path)
+
+
+def default_trainer(
+        output_dir: str,
+        max_epochs : int = 10000,
+        check_val_every_n_epoch = 1,
+        patience : int = 100,
+        min_delta: float = 0.001,
+        monitor: str = "val/loss",
+        mode: str = "min") -> typing.Tuple[lightning.Trainer, ExportableModelCheckpoint]:
     """ Default trainer with common callbacks. """
-    return lightning.Trainer(
+
+    log_dir = os.path.join(output_dir, "log")
+
+    early = lightning_call.EarlyStopping(
+            monitor=monitor,
+            min_delta=min_delta,
+            patience=patience,
+            verbose=True,
+            mode=mode
+        )
+
+    ckpt = ExportableModelCheckpoint(
+            base_path=output_dir,
+            dirpath=log_dir,
+            filename="best",
+            monitor="val/loss",
+            save_top_k=1,
+            mode="min",
+            save_last=True
+        )
+
+    logger = lightning_log.TensorBoardLogger(log_dir, name="iara")
+
+    trainer = lightning.Trainer(
         max_epochs=max_epochs,
         accelerator="auto",
-        callbacks=default_callbacks(output_dir, patience, min_delta, n_audio_samples),
+        callbacks=[ckpt, early],
+        logger=logger,
         check_val_every_n_epoch=check_val_every_n_epoch
     )
+
+    return trainer, ckpt

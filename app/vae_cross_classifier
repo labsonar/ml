@@ -12,12 +12,12 @@ fi
 case "$CNN_INPUT" in
     cnn1d|1d|time)
         REPRESENTATION="raw"
-        MODEL_DIR="model_time"
+        MODEL_DIR="time"
         CNN="cnn1d"
         ;;
-    cnn2d|2d|mel)
+    cnn2d|2d|mel|spectral)
         REPRESENTATION="spectral"
-        MODEL_DIR="model_mel"
+        MODEL_DIR="spectral"
         CNN="cnn2d"
         ;;
     *)
@@ -49,28 +49,28 @@ fi
 echo ""
 echo "========= Train classifiers on original dataset ========="
 
-if [ ! -f "${BASE_DIR}/${MODEL_DIR}/ship/original/best.ckpt" ]; then
+if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/ship/original/best.ckpt" ]; then
     echo "Training original ship classifier"
 
     python app/iemanja_classifier.py \
         --model "${CNN}" \
         --ie-target CLASS \
         --ie-representation "${REPRESENTATION}" \
-        --output_dir "${BASE_DIR}/${MODEL_DIR}/ship/original" \
+        --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/ship/original" \
         --ie-dataset-dir /data/iemanja_truncated
 else
     echo "Original ship classifier already trained"
 fi
 
 
-if [ ! -f "${BASE_DIR}/${MODEL_DIR}/channel/original/best.ckpt" ]; then
+if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original/best.ckpt" ]; then
     echo "Training original channel classifier"
 
     python app/iemanja_classifier.py \
         --model "${CNN}" \
         --ie-target "NAME_(US)" \
         --ie-representation "${REPRESENTATION}" \
-        --output_dir "${BASE_DIR}/${MODEL_DIR}/channel/original" \
+        --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original" \
         --ie-dataset-dir /data/iemanja_truncated
 else
     echo "Original channel classifier already trained"
@@ -80,28 +80,28 @@ fi
 echo ""
 echo "========= Train classifiers on reconstructed dataset ========="
 
-if [ ! -f "${BASE_DIR}/${MODEL_DIR}/ship/${MODEL}/best.ckpt" ]; then
+if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/ship/${MODEL}/best.ckpt" ]; then
     echo "Training reconstructed ship classifier: ${MODEL}"
 
     python app/iemanja_classifier.py \
         --model "${CNN}" \
         --ie-target CLASS \
         --ie-representation "${REPRESENTATION}" \
-        --output_dir "${BASE_DIR}/${MODEL_DIR}/ship/${MODEL}" \
+        --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/ship/${MODEL}" \
         --ie-dataset-dir "${VAE_DATASET}"
 else
     echo "Reconstructed ship classifier already trained: ${MODEL}"
 fi
 
 
-if [ ! -f "${BASE_DIR}/${MODEL_DIR}/channel/${MODEL}/best.ckpt" ]; then
+if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}/best.ckpt" ]; then
     echo "Training reconstructed channel classifier: ${MODEL}"
 
     python app/iemanja_classifier.py \
         --model "${CNN}" \
         --ie-target "NAME_(US)" \
         --ie-representation "${REPRESENTATION}" \
-        --output_dir "${BASE_DIR}/${MODEL_DIR}/channel/${MODEL}" \
+        --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}" \
         --ie-dataset-dir "${VAE_DATASET}"
 else
     echo "Reconstructed channel classifier already trained: ${MODEL}"
@@ -115,10 +115,10 @@ python app/iemanja_vae_cross_classifier.py \
     --ie-representation "${REPRESENTATION}" \
     --ie-target CLASS \
     --model1-type "${CNN}" \
-    --model1 "${BASE_DIR}/${MODEL_DIR}/ship/original" \
+    --model1 "${BASE_DIR}/trained_models/${MODEL_DIR}/ship/original" \
     --dataset1-dir /data/iemanja_truncated \
     --model2-type "${CNN}" \
-    --model2 "${BASE_DIR}/${MODEL_DIR}/ship/${MODEL}" \
+    --model2 "${BASE_DIR}/trained_models/${MODEL_DIR}/ship/${MODEL}" \
     --dataset2-dir "${VAE_DATASET}" \
     --output-dir "${BASE_DIR}/cross_comparison/${MODEL}/${MODEL_DIR}/ship"
 
@@ -127,9 +127,9 @@ python app/iemanja_vae_cross_classifier.py \
     --ie-representation "${REPRESENTATION}" \
     --ie-target "NAME_(US)" \
     --model1-type "${CNN}" \
-    --model1 "${BASE_DIR}/${MODEL_DIR}/channel/original" \
+    --model1 "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original" \
     --dataset1-dir /data/iemanja_truncated \
     --model2-type "${CNN}" \
-    --model2 "${BASE_DIR}/${MODEL_DIR}/channel/${MODEL}" \
+    --model2 "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}" \
     --dataset2-dir "${VAE_DATASET}" \
     --output-dir "${BASE_DIR}/cross_comparison/${MODEL}/${MODEL_DIR}/channel"

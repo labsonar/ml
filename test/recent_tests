@@ -1,17 +1,19 @@
 #!/bin/bash
 # tensorboard --logdir . --port 8888 --bind_all
 
-python app/iemanja_vs_vae_classifier.py --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave --ie-representation spectral
+# treina os modelos no espaço original, não no espaço latente do VAE e faz a comparação entre eles
+app/eval_vae_classifier rave 1d
+app/eval_vae_classifier rave 2d
 
-python app/iemanja_classifier.py --model mlp --ie-target CLASS --ie-representation latent --output_dir ./result/vae_classifiers/latent/rave/ship --ie-dataset-dir /data/iemanja_truncated --ie-latent-model /data/models/rave.ts
-python app/iemanja_classifier.py --model mlp --ie-target "NAME_(US)" --ie-representation latent --output_dir ./result/vae_classifiers/latent/rave/channel --ie-dataset-dir /data/iemanja_truncated --ie-latent-model /data/models/rave.ts
+# treina modelos para classificar: dado original vs dado reconstruído pelo VAE
+python app/iemanja_vs_vae_classifier.py --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave --ie-representation raw --model cnn1d --output-dir ./result/vae_classifiers/original_vs_reconstructed/rave/time
+python app/iemanja_vs_vae_classifier.py --dataset1-dir /data/iemanja_truncated/ --dataset2-dir /data/iemanja_vae/rave --ie-representation spectral --model cnn2d --output-dir ./result/vae_classifiers/original_vs_reconstructed/rave/spectral
 
-# app/eval_vae_classifier rave mel
-# app/eval_vae_classifier rave time
-# app/eval_vae_classifier combined_3M mel
-# app/eval_vae_classifier combined_3M time
-# app/eval_vae_classifier rave_99 mel
-# app/eval_vae_classifier rave_99 time
+# treina modelos para classificar os dados originais no espaço latente do VAE
+python app/iemanja_classifier.py --ie-target CLASS --ie-representation latent --model mlp --output-dir ./result/vae_classifiers/trained_models/latent/rave/ship --ie-dataset-dir /data/iemanja_truncated --ie-latent-model /data/models/rave.ts
+python app/iemanja_classifier.py --model mlp --ie-target "NAME_(US)" --ie-representation latent --output-dir ./result/vae_classifiers/trained_models/latent/rave/channel --ie-dataset-dir /data/iemanja_truncated --ie-latent-model /data/models/rave.ts
+
+
 
 
 # python test/test_svdd.py --ie-representation spectral --ie-cnn-flatten --ie-dataset-dir /data/iemanja_truncated/ --output-dir ./result/svdd/models/mel
