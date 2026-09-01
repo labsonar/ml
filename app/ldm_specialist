@@ -1,0 +1,61 @@
+#!/bin/bash
+
+LATENT_MODEL="/data/models/cls_5_5M_95.ts"
+UMAP_MODEL="./result/cls_5_5M/cls_5_5M_95/train/umap_cls_5_5M_95.pkl"
+OUTPUT_DIR="./result/ldm_cls_5_5M_long_train"
+
+for INPUT_CH in {0..3}; do
+    for OUTPUT_CH in {0..3}; do
+
+        if [ "$INPUT_CH" -eq "$OUTPUT_CH" ]; then
+            continue
+        fi
+
+        OUT_DIR="${OUTPUT_DIR}/${INPUT_CH}-${OUTPUT_CH}"
+
+        echo "========================================"
+        echo "Training ${INPUT_CH} -> ${OUTPUT_CH}"
+        echo "Output: ${OUT_DIR}"
+        echo "========================================"
+
+        python test/test_ldm.py \
+            --ie-latent-model "$LATENT_MODEL" \
+            --output-dir "$OUT_DIR" \
+            --fixed-input-channel "$INPUT_CH" \
+            --fixed-output-channel "$OUTPUT_CH"
+
+        python test/test_ldm_eval.py \
+            --ie-latent-model "$LATENT_MODEL" \
+            --output-dir "$OUT_DIR" \
+            --ldm-checkpoint "$OUT_DIR/best.ckpt" \
+            --umap-model "$UMAP_MODEL"
+
+    done
+done
+
+OUT_DIR="${OUTPUT_DIR}/variable"
+
+python test/test_ldm.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "$OUT_DIR" \
+    --channel-mode VARIABLE
+
+python test/test_ldm_eval.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "$OUT_DIR" \
+    --ldm-checkpoint "$OUT_DIR/best.ckpt" \
+    --umap-model "$UMAP_MODEL"
+
+OUT_DIR="${OUTPUT_DIR}/variable_distance"
+
+python test/test_ldm.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "$OUT_DIR" \
+    --channel-mode VARIABLE \
+    --embed-distance
+
+python test/test_ldm_eval.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "$OUT_DIR" \
+    --ldm-checkpoint "$OUT_DIR/best.ckpt" \
+    --umap-model "$UMAP_MODEL"

@@ -29,7 +29,6 @@ def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str) -> None:
                     tsne_data[indices, 1],
                     label=str(label),
                     alpha=0.5,
-                    cmap='jet',
                     s=10)
 
     name = os.path.splitext(os.path.basename(filename))[0]
@@ -40,3 +39,4 @@ def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str) -> None:
     plt.tight_layout()
     plt.title(name.replace("_", " ").replace("-", " ").title())
     plt.savefig(filename, bbox_inches='tight')
+    plt.close()

@@ -21,6 +21,11 @@ def _to_int16(tensor: torch.Tensor) -> np.ndarray:
     signal_np = tensor_int16.detach().cpu().numpy()
     return np.squeeze(signal_np)
 
+def _as_numpy_signal(x: typing.Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+    if isinstance(x, torch.Tensor):
+        return _to_int16(x)
+    return np.squeeze(np.asarray(x))
+
 def save_comparison(
     signals: typing.List[np.ndarray],
     labels: typing.List[str],
@@ -75,6 +80,34 @@ def save_comparison(
             analysis=lps_analysis.SpectralAnalysis.MELGRAM,
         )
 
+def save_multi_signal_comparison(
+    signals: typing.List[typing.Union[np.ndarray, torch.Tensor]],
+    labels: typing.List[str],
+    fs: typing.Union[int, "lps_qty.Frequency"],
+    output_base: str,
+    plots: typing.Sequence[str] = ("psd", "lofar", "mel", "demon"),
+) -> None:
+    """
+    Saves each signal as "{output_base}_{label}.wav" and generates the comparison plots,
+    """
+    fs_qty = fs if isinstance(fs, lps_qty.Frequency) else lps_qty.Frequency.hz(fs)
+
+    signals_np = []
+    for signal, label in zip(signals, labels):
+        signal_np = _as_numpy_signal(signal)
+        signals_np.append(signal_np)
+
+        safe_label = label.lower().replace(" ", "_")
+        lps_sig.save_wav(signal_np, fs_qty, f"{output_base}_{safe_label}.wav")
+
+    save_comparison(
+        signals=signals_np,
+        labels=labels,
+        fs=fs_qty,
+        output_base=output_base,
+        plots=plots,
+    )
+
 def save_reconstruction_audio_and_comparison(
     original: torch.Tensor,
     reconstruction: torch.Tensor,
@@ -87,23 +120,11 @@ def save_reconstruction_audio_and_comparison(
     """
     Save both signals as .wav and generate the comparison plots.
     """
-    def _as_numpy(x):
-        if isinstance(x, torch.Tensor):
-            return _to_int16(x)
-        return np.squeeze(np.asarray(x))
 
-    original_np = _as_numpy(original)
-    recon_np = _as_numpy(reconstruction)
-
-    fs_qty = fs if isinstance(fs, lps_qty.Frequency) else lps_qty.Frequency.hz(fs)
-
-    lps_sig.save_wav(original_np, fs_qty, f"{output_base}_original.wav")
-    lps_sig.save_wav(recon_np, fs_qty, f"{output_base}_reconstructed.wav")
-
-    save_comparison(
-        signals=[original_np, recon_np],
+    save_multi_signal_comparison(
+        signals=[original, reconstruction],
         labels=[original_label, reconstruction_label],
-        fs=fs_qty,
+        fs=fs,
         output_base=output_base,
         plots=plots,
     )

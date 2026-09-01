@@ -29,7 +29,7 @@ class BaseDataModule(lightning.LightningDataModule):
         """
         if not getattr(self, "_has_setup", False):
             self.prepare_data()
-            self.setup("fit")
+            self.setup(subset)
 
         if subset == "train":
             loader = self.train_dataloader()
@@ -43,6 +43,8 @@ class BaseDataModule(lightning.LightningDataModule):
             raise ValueError(f"invalid subset: {subset}")
 
         x, _ = next(iter(loader))
+        if isinstance(x, list):
+            x = x[0]
         return list(x.shape[1:])
 
     @abc.abstractmethod
@@ -387,7 +389,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             return self.all_dataloader()
 
         if isinstance(role, str):
-            role = ml_cv.FoldRole[role]
+            role = ml_cv.FoldRole[role.upper()]
 
         if role == ml_cv.FoldRole.TRAIN:
             return self.train_dataloader()
@@ -397,6 +399,17 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             return self.test_dataloader()
 
         raise ValueError(f"Unsupported fold role: {role}")
+
+    def get_role_dataloaders(self,
+        roles: typing.Sequence[str| ml_cv.FoldRole] = ("train", "val", "test")
+    ) -> typing.Dict[str, torch_data.DataLoader]:
+        """
+        Returns {role_name: DataLoader}
+        """
+        return {
+            str(role): self.get_dataloader_by_role(role) for role in roles
+        }
+
 
     def get_dataloader_dict_by_role(self, role: ml_cv.FoldRole | str | None = None) -> \
         typing.Dict[int, "torch_data.DataLoader"]:
@@ -445,6 +458,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             raise ValueError(f"Unsupported fold role: {role}")
 
         return set(df["file_id"].dropna().astype(int).unique().tolist())
+
 
 class PairedAudioDataModule:
     _DEFAULT_PAIR_BUILDERS = {}

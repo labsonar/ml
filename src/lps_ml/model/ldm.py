@@ -1,12 +1,13 @@
 import enum
 import typing
-import math
+import argparse
 
 import torch
 import lightning
 
 import lps_ml.model.blocks.embedding as ml_emb
 import lps_ml.model.blocks.unet as ml_unet
+import lps_ml.core.datamodule as ml_core
 
 class LDMLoss(enum.Enum):
     """ Loss functions for training the Latent Diffusion Model. """
@@ -241,5 +242,124 @@ class LatentDiffusionModel(lightning.LightningModule):
             )
 
         return x
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+        """Add Latent Diffusion Model arguments to an argparse parser."""
+
+        group = parser.add_argument_group("LDM")
+
+        # Diffusion
+        group.add_argument( "--ldm-steps", type=int, default=300,
+            help="Number of diffusion timesteps.")
+
+        group.add_argument( "--beta-start", type=float, default=1e-4,
+            help="Initial value of the diffusion beta schedule.")
+
+        group.add_argument( "--beta-end", type=float, default=0.02,
+            help="Final value of the diffusion beta schedule.")
+
+        group.add_argument( "--ldm-loss", type=str, choices=[loss.name.lower() for loss in LDMLoss],
+            default=LDMLoss.MSE.name.lower(), help="Loss function used to train the LDM.")
+
+        # Conditioning
+        group.add_argument( "--embed-dim", type=int, default=128,
+            help="Dimension of the conditioning embedding.")
+
+        group.add_argument( "--channel-mode", type=str,
+            choices=[mode.name.lower() for mode in ChannelMode],
+            default=ChannelMode.FIXED.name.lower(),
+            help="Channel conditioning mode."
+        )
+
+        group.add_argument( "--fixed-input-channel", type=int, default=0,
+            help="Input channel used when channel mode is FIXED.")
+
+        group.add_argument( "--fixed-output-channel", type=int, default=1,
+            help="Output channel used when channel mode is FIXED.")
+
+        group.add_argument("--embed-distance", action="store_true",
+            help="Enable distance conditioning.")
+
+        # U-Net
+        group.add_argument( "--base-channels", type=int, default=128,
+            help="Base number of channels in the U-Net.")
+
+        group.add_argument( "--channel-ratios", type=int, nargs="+", default=[1, 2, 4],
+            help="Channel multipliers for each U-Net level.")
+
+        group.add_argument( "--num-res-blocks", type=int, default=2,
+            help="Number of residual blocks per U-Net level.")
+
+        group.add_argument( "--kernel-size", type=int, default=3,
+            help="Kernel size used by the U-Net.")
+
+        group.add_argument( "--stride", type=int, default=2,
+            help="Stride used by the U-Net down/up-sampling blocks.")
+
+        group.add_argument( "--n-internal-convs", type=int, default=3,
+            help="Number of internal convolutions in each U-Net block.")
+
+        group.add_argument( "--ldm-activation", type=str,
+            choices=["relu", "leaky_relu", "gelu", "tanh"], default="leaky_relu",
+            help="Activation function used by the U-Net."
+        )
+
+        group.add_argument( "--ldm-norm", type=str, choices=["batch_norm", "none"],
+            default="batch_norm", help="Normalization layer used by the U-Net.")
+
+        # Optimization
+        group.add_argument( "--ldm-lr", type=float, default=1e-4, help="Learning rate.")
+
+        return group
+
+    @staticmethod
+    def from_args(
+        args: argparse.Namespace,
+        dm: ml_core.BaseDataModule,
+    ) -> "LatentDiffusionModel":
+        """Create a LatentDiffusionModel from command-line arguments."""
+
+        activation_layers = {
+            "relu": torch.nn.ReLU,
+            "leaky_relu": torch.nn.LeakyReLU,
+            "gelu": torch.nn.GELU,
+            "tanh": torch.nn.Tanh,
+        }
+
+        norm_layers = {
+            "batch_norm": torch.nn.BatchNorm1d,
+            "none": None,
+        }
+
+        print("dm.get_sample_shape(): ", dm.get_sample_shape())
+
+        return LatentDiffusionModel(
+            in_channels=dm.get_sample_shape()[0],
+            embed_dim=args.embed_dim,
+            n_channels=dm.get_n_channels(),
+
+            channel_mode=ChannelMode[args.channel_mode.upper()],
+            fixed_input_channel=args.fixed_input_channel,
+            fixed_output_channel=args.fixed_output_channel,
+            embeed_distance=args.embed_distance,
+
+            base_channels=args.base_channels,
+            channel_ratios=args.channel_ratios,
+            num_res_blocks=args.num_res_blocks,
+            kernel_size=args.kernel_size,
+            stride=args.stride,
+            activation=activation_layers[args.ldm_activation],
+            norm=norm_layers[args.ldm_norm],
+            n_internal_convs=args.n_internal_convs,
+
+            timesteps=args.ldm_steps,
+            beta_start=args.beta_start,
+            beta_end=args.beta_end,
+
+            lr=args.ldm_lr,
+            loss=LDMLoss[args.ldm_loss.upper()],
+        )
+
 
 LDM = LatentDiffusionModel

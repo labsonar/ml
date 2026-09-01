@@ -13,7 +13,8 @@ import lightning.pytorch.loggers as lightning_log
 import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
 import lps_ml.utils.sonar_loss as ml_loss
-
+import lps_ml.utils.audio as ml_audio
+import lps_ml.audio_processors.model_processors as ml_model_procs
 
 class PlotMetrics(lightning.Callback):
     """
@@ -228,6 +229,65 @@ class ExportableModelCheckpoint(lightning_call.ModelCheckpoint):
         if self.last_model_path:
             shutil.copy2(self.last_model_path, self.last_path)
 
+class SaveLDMSamples(lightning.Callback):
+    """
+    At the end of training, decode (conditioning, target, generated) latent
+    triples back to waveform via a VAEEncoder and save wav + PSD/LOFAR/Mel
+    comparison plots for a handful of validation samples.
+    """
+
+    def __init__(
+        self,
+        output_dir: str,
+        vae_encoder,
+        n_samples: int = 5,
+        sample_rate: int = 16000,
+        plots: typing.Sequence[str] = ("psd", "lofar", "mel"),
+    ):
+        super().__init__()
+        self.output_dir = output_dir
+        self.vae_encoder = vae_encoder
+        self.n_samples = n_samples
+        self.sample_rate = sample_rate
+        self.plots = plots
+
+    def on_fit_end(self, trainer, pl_module):
+
+        device = pl_module.device
+        dm = trainer.datamodule
+
+        loader = dm.val_dataloader()
+        batch = next(iter(loader))
+
+        data, _ = batch
+        x1, x2 = data[0], data[1]
+
+        x1 = x1[:self.n_samples].to(device)
+        x2 = x2[:self.n_samples].to(device)
+
+        with torch.no_grad():
+            generated_latent = pl_module.sample(cond=x1)
+
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        for i in range(self.n_samples):
+
+            z_cond = x1[i].detach().cpu().numpy()
+            z_target = x2[i].detach().cpu().numpy()
+            z_gen = generated_latent[i].detach().cpu().numpy()
+
+            wav_cond = self.vae_encoder.decode(z_cond).reshape(-1)
+            wav_target = self.vae_encoder.decode(z_target).reshape(-1)
+            wav_gen = self.vae_encoder.decode(z_gen).reshape(-1)
+
+            ml_audio.save_multi_signal_comparison(
+                signals=[wav_cond, wav_target, wav_gen],
+                labels=["Condicionante", "Alvo", "Gerado"],
+                fs=self.sample_rate,
+                output_base=os.path.join(self.output_dir, f"sample_{i}"),
+                plots=self.plots,
+            )
+
 
 def default_trainer(
         output_dir: str,
@@ -236,7 +296,9 @@ def default_trainer(
         patience : int = 100,
         min_delta: float = 0.001,
         monitor: str = "val/loss",
-        mode: str = "min") -> typing.Tuple[lightning.Trainer, ExportableModelCheckpoint]:
+        mode: str = "min",
+        vae_encoder = None
+) -> typing.Tuple[lightning.Trainer, ExportableModelCheckpoint]:
     """ Default trainer with common callbacks. """
 
     log_dir = os.path.join(output_dir, "log")
@@ -259,12 +321,24 @@ def default_trainer(
             save_last=True
         )
 
+    callbacks=[ckpt, early]
+
+    if vae_encoder is not None:
+        save_ldm_samples = SaveLDMSamples(
+            output_dir=os.path.join(output_dir, "ldm_samples"),
+            vae_encoder=vae_encoder,
+            n_samples=5,
+            sample_rate=16000,
+            plots=("psd", "lofar", "mel"),
+        )
+        callbacks.append(save_ldm_samples)
+
     logger = lightning_log.TensorBoardLogger(log_dir, name="iara")
 
     trainer = lightning.Trainer(
         max_epochs=max_epochs,
         accelerator="auto",
-        callbacks=[ckpt, early],
+        callbacks=callbacks,
         logger=logger,
         check_val_every_n_epoch=check_val_every_n_epoch
     )

@@ -68,12 +68,26 @@ if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original/best.ckpt" ]
 
     python app/train_classifier.py \
         --model "${CNN}" \
-        --ie-target "NAME_(US)" \
+        --ie-target "LOCAL_ID" \
         --ie-representation "${REPRESENTATION}" \
         --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original" \
         --ie-dataset-dir /data/iemanja_truncated
 else
     echo "Original channel classifier already trained"
+fi
+
+
+if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/shallow/original/best.ckpt" ]; then
+    echo "Training original shallow classifier"
+
+    python app/train_classifier.py \
+        --model "${CNN}" \
+        --ie-target "SHALLOW_WATER" \
+        --ie-representation "${REPRESENTATION}" \
+        --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/shallow/original" \
+        --ie-dataset-dir /data/iemanja_truncated
+else
+    echo "Original shallow classifier already trained"
 fi
 
 
@@ -99,12 +113,26 @@ if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}/best.ckpt" ]
 
     python app/train_classifier.py \
         --model "${CNN}" \
-        --ie-target "NAME_(US)" \
+        --ie-target "LOCAL_ID" \
         --ie-representation "${REPRESENTATION}" \
         --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}" \
         --ie-dataset-dir "${VAE_DATASET}"
 else
     echo "Reconstructed channel classifier already trained: ${MODEL}"
+fi
+
+
+if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/shallow/${MODEL}/best.ckpt" ]; then
+    echo "Training reconstructed shallow classifier: ${MODEL}"
+
+    python app/train_classifier.py \
+        --model "${CNN}" \
+        --ie-target "SHALLOW_WATER" \
+        --ie-representation "${REPRESENTATION}" \
+        --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/shallow/${MODEL}" \
+        --ie-dataset-dir "${VAE_DATASET}"
+else
+    echo "Reconstructed shallow classifier already trained: ${MODEL}"
 fi
 
 
@@ -125,7 +153,7 @@ python app/vae_cross_classifier.py \
 
 python app/vae_cross_classifier.py \
     --ie-representation "${REPRESENTATION}" \
-    --ie-target "NAME_(US)" \
+    --ie-target "LOCAL_ID" \
     --model1-type "${CNN}" \
     --model1 "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original" \
     --dataset1-dir /data/iemanja_truncated \
@@ -133,3 +161,15 @@ python app/vae_cross_classifier.py \
     --model2 "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}" \
     --dataset2-dir "${VAE_DATASET}" \
     --output-dir "${BASE_DIR}/cross_comparison/${MODEL}/${MODEL_DIR}/channel"
+
+
+python app/vae_cross_classifier.py \
+    --ie-representation "${REPRESENTATION}" \
+    --ie-target "SHALLOW_WATER" \
+    --model1-type "${CNN}" \
+    --model1 "${BASE_DIR}/trained_models/${MODEL_DIR}/shallow/original" \
+    --dataset1-dir /data/iemanja_truncated \
+    --model2-type "${CNN}" \
+    --model2 "${BASE_DIR}/trained_models/${MODEL_DIR}/shallow/${MODEL}" \
+    --dataset2-dir "${VAE_DATASET}" \
+    --output-dir "${BASE_DIR}/cross_comparison/${MODEL}/${MODEL_DIR}/shallow"

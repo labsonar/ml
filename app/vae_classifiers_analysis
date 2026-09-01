@@ -17,8 +17,8 @@ if [ ! -f "$VAE_MODEL" ]; then
     exit 1
 fi
 
-app/eval_vae_classifier "${MODEL}" 1d
-app/eval_vae_classifier "${MODEL}" 2d
+app/vae_cross_classifier "${MODEL}" 1d
+app/vae_cross_classifier "${MODEL}" 2d
 
 python app/vae_vs_original.py \
     --dataset1-dir "$ORIGINAL_DATASET" \
@@ -43,9 +43,17 @@ python app/train_classifier.py \
     --ie-latent-model "$VAE_MODEL"
 
 python app/train_classifier.py \
-    --model mlp \
-    --ie-target "NAME_(US)" \
+    --ie-target "LOCAL_ID" \
     --ie-representation latent \
+    --model mlp \
     --output-dir "./result/vae_classifiers/trained_models/latent/${MODEL}/channel" \
+    --ie-dataset-dir "$ORIGINAL_DATASET" \
+    --ie-latent-model "$VAE_MODEL"
+
+python app/train_classifier.py \
+    --ie-target "SHALLOW_WATER" \
+    --ie-representation latent \
+    --model mlp \
+    --output-dir "./result/vae_classifiers/trained_models/latent/${MODEL}/shallow" \
     --ie-dataset-dir "$ORIGINAL_DATASET" \
     --ie-latent-model "$VAE_MODEL"
