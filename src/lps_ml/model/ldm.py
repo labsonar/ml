@@ -132,7 +132,7 @@ class LatentDiffusionModel(lightning.LightningModule):
 
     def _shared_step(self, batch, stage: str):
 
-        data, target = batch
+        data, target, _ = batch
         data = torch.stack(data, dim=1)
 
         batch_size = data.shape[0]
@@ -266,7 +266,7 @@ class LatentDiffusionModel(lightning.LightningModule):
         group.add_argument( "--embed-dim", type=int, default=128,
             help="Dimension of the conditioning embedding.")
 
-        group.add_argument( "--channel-mode", type=str,
+        group.add_argument( "--channel-mode", type=str.lower,
             choices=[mode.name.lower() for mode in ChannelMode],
             default=ChannelMode.FIXED.name.lower(),
             help="Channel conditioning mode."
@@ -361,5 +361,25 @@ class LatentDiffusionModel(lightning.LightningModule):
             loss=LDMLoss[args.ldm_loss.upper()],
         )
 
+    def get_pairs(self) -> typing.List[typing.Tuple[int, int]]:
+        """ Generate all pair combinations of input and output channels trained in model. """
+
+        if self.channel_mode == ChannelMode.FIXED:
+            channel_pairs = [
+                (
+                    self.fixed_input_channel,
+                    self.fixed_output_channel
+                )
+            ]
+
+        else:
+            channel_pairs = [
+                (i, j)
+                for i in range(self.n_channels)
+                for j in range(self.n_channels)
+                if i != j
+            ]
+
+        return channel_pairs
 
 LDM = LatentDiffusionModel

@@ -16,6 +16,8 @@ import torch
 
 import lps_utils.quantities as lps_qty
 import lps_sp.signal as lps_sig
+import lps_ml.model.mlp as ml_mlp
+import lps_ml.model.cnn as ml_cnn
 
 
 def set_seed():
@@ -143,3 +145,30 @@ def shortest_relative_path(paths: list[str]) -> list[tuple[str, str]]:
     result.sort(key=lambda x: x[0])
 
     return result
+
+def load_model(path: str, model_type: str):
+    """
+    Load a MLP, CNN1D or CNN2D model from a checkpoint.
+    """
+
+    if os.path.isdir(path):
+        path = os.path.join(path, "best.ckpt")
+
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+
+    if model_type == "cnn1d":
+        model_class = ml_cnn.CNN1D
+    elif model_type == "cnn2d":
+        model_class = ml_cnn.CNN2D
+    elif model_type == "mlp":
+        model_class = ml_mlp.MLP
+    else:
+        raise ValueError(
+            f"Unknown model type: {model_type}"
+        )
+
+    model = model_class.load_from_checkpoint(path)
+    model.eval()
+
+    return model

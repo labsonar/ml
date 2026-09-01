@@ -56,34 +56,6 @@ import lps_ml.datasets as ml_db
 import lps_ml.utils.device as ml_device
 import lps_ml.utils.general as ml_utils
 
-def load_model(path: str, model_type: str):
-    """
-    Load a CNN1D or CNN2D model from a checkpoint.
-    """
-
-    if os.path.isdir(path):
-        path = os.path.join(path, "best.ckpt")
-
-    if not os.path.isfile(path):
-        raise FileNotFoundError(path)
-
-    if model_type == "cnn1d":
-        model_class = ml_model.CNN1D
-    elif model_type == "cnn2d":
-        model_class = ml_model.CNN2D
-    else:
-        raise ValueError(
-            f"Unknown model type: {model_type}"
-        )
-
-    print(f"Loading model: {path}")
-    print(f"Model type: {model_type}")
-
-    model = model_class.load_from_checkpoint(path)
-    model.eval()
-
-    return model
-
 def build_datamodule(builder, args, dataset_dir: str):
     """
     Build an Iemanja DataModule using the common processing arguments.
@@ -353,8 +325,8 @@ def _main():
 
     print("=" * 70)
 
-    model1 = load_model(args.model1, args.model1_type)
-    model2 = load_model(args.model2, args.model2_type)
+    model1 = ml_utils.load_model(args.model1, args.model1_type)
+    model2 = ml_utils.load_model(args.model2, args.model2_type)
 
 
     print()

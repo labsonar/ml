@@ -64,22 +64,7 @@ def _main():
     model.to(device)
     model.eval()
 
-    if model.channel_mode == ml_model.ChannelMode.FIXED:
-        channel_pairs = [
-            (
-                model.fixed_input_channel,
-                model.fixed_output_channel
-            )
-        ]
-
-    else:
-        channel_pairs = [
-            (i, j)
-            for i in range(model.n_channels)
-            for j in range(model.n_channels)
-            if i != j
-        ]
-
+    channel_pairs = model.get_pairs()
     umap_model = ml_umap.load_umap(args.umap_model)
 
     with torch.no_grad():
@@ -103,7 +88,7 @@ def _main():
 
             global_sample_id = 0
 
-            for _, (batch, target) in enumerate(val_loader):
+            for batch, target, _ in val_loader:
 
                 x_cond = batch[in_ch]
                 x_target = batch[out_ch]

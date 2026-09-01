@@ -259,7 +259,7 @@ class SaveLDMSamples(lightning.Callback):
         loader = dm.val_dataloader()
         batch = next(iter(loader))
 
-        data, _ = batch
+        data, _, _ = batch
         x1, x2 = data[0], data[1]
 
         x1 = x1[:self.n_samples].to(device)

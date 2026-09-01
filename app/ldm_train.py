@@ -35,8 +35,12 @@ def _main():
     model = ml_model.LatentDiffusionModel.from_args(args, dm)
     model = model.to(device)
 
-    trainer, _ = ml_default.trainer_from_args(args, vae_encoder=vae_encoder)
-    trainer.fit(model, dm)
+    trainer, ckpt = ml_default.trainer_from_args(args, vae_encoder=vae_encoder)
+
+    if os.path.exists(ckpt.get_best()):
+        print("Model already trained")
+    else:
+        trainer.fit(model, dm)
 
 if __name__ == "__main__":
     _main()
