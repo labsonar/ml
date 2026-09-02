@@ -42,7 +42,8 @@ class BaseDataModule(lightning.LightningDataModule):
         else:
             raise ValueError(f"invalid subset: {subset}")
 
-        x, _, _ = next(iter(loader))
+        batch = next(iter(loader))
+        x = batch[0]
         if isinstance(x, list):
             x = x[0]
         return list(x.shape[1:])

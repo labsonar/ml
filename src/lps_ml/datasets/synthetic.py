@@ -472,8 +472,8 @@ class IemanjaBuilder:
 
                 audio_pipelines.append(ml_procs.SpectralProcessor(analysis=analysis, params=params))
 
-                n_samples=int(n_samples / params.n_spectral_pts)
-                overlap=int(overlap / params.n_spectral_pts)
+                n_samples=int(n_samples / params.n_spectral_pts / 2)
+                overlap=int(overlap / params.n_spectral_pts / 2)
 
                 if args.ie_cnn_models is not None:
 

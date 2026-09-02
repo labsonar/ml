@@ -69,7 +69,6 @@ def save_confusion_matrix(
     fig.savefig(filename, dpi=150)
     plt.close(fig)
 
-
 def calculate_performance(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -114,7 +113,6 @@ def calculate_performance(
         }
 
     return pd.DataFrame(result)
-
 
 def main() -> None:
 

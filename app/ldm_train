@@ -16,6 +16,15 @@ SHIP_CLASSIFIER="./result/vae_classifiers/trained_models/latent/${MODEL}/ship"
 CHANNEL_CLASSIFIER="./result/vae_classifiers/trained_models/latent/${MODEL}/channel"
 SHALLOW_CLASSIFIER="./result/vae_classifiers/trained_models/latent/${MODEL}/shallow"
 
+TIME_SHIP_CLASSIFIER="./result/vae_classifiers/trained_models/time/ship/${MODEL}/"
+TIME_CHANNEL_CLASSIFIER="./result/vae_classifiers/trained_models/time/channel/${MODEL}/"
+TIME_SHALLOW_CLASSIFIER="./result/vae_classifiers/trained_models/time/shallow/${MODEL}/"
+
+SPECTRAL_SHIP_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/ship/${MODEL}/"
+SPECTRAL_CHANNEL_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/channel/${MODEL}/"
+SPECTRAL_SHALLOW_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/shallow/${MODEL}/"
+
+
 for INPUT_CH in {0..3}; do
     for OUTPUT_CH in {0..3}; do
 
@@ -24,7 +33,6 @@ for INPUT_CH in {0..3}; do
         fi
 
         OUT_DIR="${BASE_DIR}/models/specialist/${INPUT_CH}-${OUTPUT_CH}"
-        ANALYSIS_DIR="${BASE_DIR}/analysis/specialist"
 
         echo "========================================"
         echo "Training ${INPUT_CH} -> ${OUTPUT_CH}"
@@ -45,17 +53,51 @@ for INPUT_CH in {0..3}; do
 
         python app/ldm_classify.py \
             --ie-latent-model "$LATENT_MODEL" \
-            --output-dir "$ANALYSIS_DIR" \
+            --output-dir "${BASE_DIR}/latent_analysis/specialist" \
             --ldm-checkpoint "$OUT_DIR" \
+            --model-type "mlp" \
             --ship-model "$SHIP_CLASSIFIER" \
             --channel-model "$CHANNEL_CLASSIFIER" \
             --shallow-model "$SHALLOW_CLASSIFIER"
 
+        python app/ldm_classify_reconstructed.py \
+            --ie-latent-model "$LATENT_MODEL" \
+            --output-dir "${BASE_DIR}/time_analysis/specialist" \
+            --ldm-checkpoint "$OUT_DIR" \
+            --model-type "cnn1d" \
+            --model-representation "raw" \
+            --ship-model "$TIME_SHIP_CLASSIFIER" \
+            --channel-model "$TIME_CHANNEL_CLASSIFIER" \
+            --shallow-model "$TIME_SHALLOW_CLASSIFIER"
+
+        python app/ldm_classify_reconstructed.py \
+            --ie-latent-model "$LATENT_MODEL" \
+            --output-dir "${BASE_DIR}/spectral_analysis/specialist" \
+            --ldm-checkpoint "$OUT_DIR" \
+            --model-type "cnn2d" \
+            --model-representation "spectral" \
+            --ship-model "$SPECTRAL_SHIP_CLASSIFIER" \
+            --channel-model "$SPECTRAL_CHANNEL_CLASSIFIER" \
+            --shallow-model "$SPECTRAL_SHALLOW_CLASSIFIER"
+
+
     done
 done
 
+python app/ldm_classify_compiler.py \
+    --input_dir "${BASE_DIR}/latent_analysis/specialist" \
+    --output_dir "${BASE_DIR}/latent_analysis/specialist_compiled"
+
+python app/ldm_classify_compiler.py \
+    --input_dir "${BASE_DIR}/time_analysis/specialist" \
+    --output_dir "${BASE_DIR}/time_analysis/specialist_compiled"
+
+python app/ldm_classify_compiler.py \
+    --input_dir "${BASE_DIR}/spectral_analysis/specialist" \
+    --output_dir "${BASE_DIR}/spectral_analysis/specialist_compiled"
+
+
 OUT_DIR="${BASE_DIR}/models/generalist"
-ANALYSIS_DIR="${BASE_DIR}/analysis/generalist"
 
 python app/ldm_train.py \
     --ie-latent-model "$LATENT_MODEL" \
@@ -70,14 +112,35 @@ python app/ldm_visualize.py \
 
 python app/ldm_classify.py \
     --ie-latent-model "$LATENT_MODEL" \
-    --output-dir "$ANALYSIS_DIR" \
+    --output-dir "${BASE_DIR}/latent_analysis/generalist" \
     --ldm-checkpoint "$OUT_DIR" \
+    --model-type "mlp" \
     --ship-model "$SHIP_CLASSIFIER" \
     --channel-model "$CHANNEL_CLASSIFIER" \
     --shallow-model "$SHALLOW_CLASSIFIER"
 
-OUT_DIR="${OUTPUT_DIR}/models/generalist_with_distance"
-ANALYSIS_DIR="${BASE_DIR}/analysis/generalist_with_distance"
+python app/ldm_classify_reconstructed.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "${BASE_DIR}/time_analysis/generalist" \
+    --ldm-checkpoint "$OUT_DIR" \
+    --model-type "cnn1d" \
+    --model-representation "raw" \
+    --ship-model "$TIME_SHIP_CLASSIFIER" \
+    --channel-model "$TIME_CHANNEL_CLASSIFIER" \
+    --shallow-model "$TIME_SHALLOW_CLASSIFIER"
+
+python app/ldm_classify_reconstructed.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "${BASE_DIR}/spectral_analysis/generalist" \
+    --ldm-checkpoint "$OUT_DIR" \
+    --model-type "cnn2d" \
+    --model-representation "spectral" \
+    --ship-model "$SPECTRAL_SHIP_CLASSIFIER" \
+    --channel-model "$SPECTRAL_CHANNEL_CLASSIFIER" \
+    --shallow-model "$SPECTRAL_SHALLOW_CLASSIFIER"
+
+
+OUT_DIR="${BASE_DIR}/models/generalist_with_distance"
 
 python app/ldm_train.py \
     --ie-latent-model "$LATENT_MODEL" \
@@ -93,8 +156,29 @@ python app/ldm_visualize.py \
 
 python app/ldm_classify.py \
     --ie-latent-model "$LATENT_MODEL" \
-    --output-dir "$ANALYSIS_DIR" \
+    --output-dir "${BASE_DIR}/latent_analysis/generalist_with_distance" \
     --ldm-checkpoint "$OUT_DIR" \
+    --model-type "mlp" \
     --ship-model "$SHIP_CLASSIFIER" \
     --channel-model "$CHANNEL_CLASSIFIER" \
     --shallow-model "$SHALLOW_CLASSIFIER"
+
+python app/ldm_classify_reconstructed.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "${BASE_DIR}/time_analysis/generalist_with_distance" \
+    --ldm-checkpoint "$OUT_DIR" \
+    --model-type "cnn1d" \
+    --model-representation "raw" \
+    --ship-model "$TIME_SHIP_CLASSIFIER" \
+    --channel-model "$TIME_CHANNEL_CLASSIFIER" \
+    --shallow-model "$TIME_SHALLOW_CLASSIFIER"
+
+python app/ldm_classify_reconstructed.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "${BASE_DIR}/spectral_analysis/generalist_with_distance" \
+    --ldm-checkpoint "$OUT_DIR" \
+    --model-type "cnn2d" \
+    --model-representation "spectral" \
+    --ship-model "$SPECTRAL_SHIP_CLASSIFIER" \
+    --channel-model "$SPECTRAL_CHANNEL_CLASSIFIER" \
+    --shallow-model "$SPECTRAL_SHALLOW_CLASSIFIER"

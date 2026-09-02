@@ -20,7 +20,6 @@ def print_available_device():
     else:
         print("No GPU available, using CPU.")
 
-
 def load_ts_model(path: str, device: typing.Optional[torch.device] = None) -> \
     torch.jit.ScriptModule:
     """

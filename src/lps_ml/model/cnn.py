@@ -403,7 +403,7 @@ class CNN2D(lps_mlp.MLP):
             choices=["max_pool", "avg_pool", "none"],
         )
 
-        group.add_argument( "--cnn2d-conv-pooling-size", type=int, nargs="+", default=[4, 2])
+        group.add_argument( "--cnn2d-conv-pooling-size", type=int, nargs="+", default=[4, 1])
         group.add_argument( "--cnn2d-conv-dilation", type=int, nargs="+", default=[1])
         group.add_argument( "--cnn2d-conv-dropout", type=float, default=0.5)
 

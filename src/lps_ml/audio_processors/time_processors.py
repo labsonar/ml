@@ -120,7 +120,6 @@ class SampleProcessor(ml_core.AudioProcessor):
         self.n_samples = n_samples
         self.overlap = overlap
 
-
     def fragment(self, fs: lps_qty.Frequency, data: np.ndarray) -> typing.List[np.ndarray]:
 
         data_samples = data.shape[-1]

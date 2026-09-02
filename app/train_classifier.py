@@ -30,6 +30,8 @@ def _main():
 
     if args.paired:
         dm = builder.paired_from_argparse_args(args)
+        if not args.only_info:
+            raise ValueError("Paired mode is only for info. Use --only-info with --paired.")
     else:
         dm = builder.from_argparse_args(args)
 
