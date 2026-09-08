@@ -259,22 +259,34 @@ class SaveLDMSamples(lightning.Callback):
         loader = dm.val_dataloader()
         batch = next(iter(loader))
 
-        data, _, _ = batch
-        x1, x2 = data[0], data[1]
+        data, distance, _ = batch
 
-        x1 = x1[:self.n_samples].to(device)
-        x2 = x2[:self.n_samples].to(device)
+        batch_size = min(self.n_samples, data[0].shape[0])
 
-        with torch.no_grad():
-            generated_latent = pl_module.sample(cond=x1)
+        pairs = pl_module.get_pairs()
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        for i in range(self.n_samples):
+        for i in range(batch_size):
 
-            z_cond = x1[i].detach().cpu().numpy()
-            z_target = x2[i].detach().cpu().numpy()
-            z_gen = generated_latent[i].detach().cpu().numpy()
+            pair_idx = torch.randint(low=0, high=len(pairs), size=()).item()
+            input_ch, output_ch = pairs[pair_idx]
+
+            x_cond = data[input_ch][i].unsqueeze(0)
+            x_target = data[output_ch][i].unsqueeze(0)
+            sample_distance = distance[i].unsqueeze(0)
+
+            with torch.no_grad():
+                generated_latent = pl_module.sample(
+                    cond=x_cond,
+                    distance=sample_distance,
+                    input_ch=input_ch,
+                    output_ch=output_ch,
+                )
+
+            z_cond = x_cond[0].detach().cpu().numpy()
+            z_target = x_target[0].detach().cpu().numpy()
+            z_gen = generated_latent[0].detach().cpu().numpy()
 
             wav_cond = self.vae_encoder.decode(z_cond).reshape(-1)
             wav_target = self.vae_encoder.decode(z_target).reshape(-1)
@@ -284,7 +296,10 @@ class SaveLDMSamples(lightning.Callback):
                 signals=[wav_cond, wav_target, wav_gen],
                 labels=["Condicionante", "Alvo", "Gerado"],
                 fs=self.sample_rate,
-                output_base=os.path.join(self.output_dir, f"sample_{i}"),
+                output_base=os.path.join(
+                    self.output_dir,
+                    f"sample_{i}_ch{input_ch}_to_ch{output_ch}",
+                ),
                 plots=self.plots,
             )
 

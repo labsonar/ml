@@ -52,7 +52,6 @@ class ReconstructionMetric(enum.Enum):
         else:
             raise NotImplementedError
 
-
     @staticmethod
     def _si_sdr(x, x_hat):
         """

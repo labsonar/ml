@@ -24,6 +24,9 @@ SPECTRAL_SHIP_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/ship/
 SPECTRAL_CHANNEL_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/channel/${MODEL}/"
 SPECTRAL_SHALLOW_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/shallow/${MODEL}/"
 
+ORIGINAL_SPECTRAL_SHIP_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/ship/original/"
+ORIGINAL_SPECTRAL_CHANNEL_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/channel/original/"
+ORIGINAL_SPECTRAL_SHALLOW_CLASSIFIER="./result/vae_classifiers/trained_models/spectral/shallow/original/"
 
 for INPUT_CH in {0..3}; do
     for OUTPUT_CH in {0..3}; do
@@ -182,3 +185,13 @@ python app/ldm_classify_reconstructed.py \
     --ship-model "$SPECTRAL_SHIP_CLASSIFIER" \
     --channel-model "$SPECTRAL_CHANNEL_CLASSIFIER" \
     --shallow-model "$SPECTRAL_SHALLOW_CLASSIFIER"
+
+python app/ldm_classify_reconstructed.py \
+    --ie-latent-model "$LATENT_MODEL" \
+    --output-dir "${BASE_DIR}/original_classifier/generalist_with_distance/spectral_analysis" \
+    --ldm-checkpoint "$OUT_DIR" \
+    --model-type "cnn2d" \
+    --model-representation "spectral" \
+    --ship-model "$ORIGINAL_SPECTRAL_SHIP_CLASSIFIER" \
+    --channel-model "$ORIGINAL_SPECTRAL_CHANNEL_CLASSIFIER" \
+    --shallow-model "$ORIGINAL_SPECTRAL_SHALLOW_CLASSIFIER"

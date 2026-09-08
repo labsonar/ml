@@ -2,8 +2,8 @@
 set -e
 
 python app/vae_latent_visualize.py --models /data/models/*.ts --export-umap --fold-role TRAIN --ie-target CLASS --output-dir ./result/latent_analysis/ship/train
-python app/vae_latent_visualize.py --models /data/models/*.ts --fold-role TRAIN --ie-target LOCAL_ID --output-dir ./result/latent_analysis/channel/train
-python app/vae_latent_visualize.py --models /data/models/*.ts --fold-role TRAIN --ie-target SHALLOW_WATER --output-dir ./result/latent_analysis/shallow/train
+python app/vae_latent_visualize.py --models /data/models/*.ts --export-umap --fold-role TRAIN --ie-target LOCAL_ID --output-dir ./result/latent_analysis/channel/train
+python app/vae_latent_visualize.py --models /data/models/*.ts --export-umap --fold-role TRAIN --ie-target SHALLOW_WATER --output-dir ./result/latent_analysis/shallow/train
 
 python app/vae_latent_visualize.py --models /data/models/*.ts --fold-role VALIDATION --ie-target CLASS --output-dir ./result/latent_analysis/ship/val
 python app/vae_latent_visualize.py --models /data/models/*.ts --fold-role VALIDATION --ie-target LOCAL_ID --output-dir ./result/latent_analysis/channel/val
