@@ -24,6 +24,7 @@ import lps_ml.utils.general as ml_utils
 import lps_ml.utils.device as ml_device
 import lps_ml.utils.default as ml_default
 import lps_ml.model as ml_model
+import lps_ml.utils.metrics as ml_metrics
 
 
 def predict_classifier(
@@ -44,42 +45,6 @@ def predict_classifier(
         pred = torch.argmax(output, dim=1)
 
     return pred
-
-def save_confusion_matrix(
-        y_true,
-        y_pred,
-        labels,
-        filename,
-        title,
-):
-    """Save a confusion matrix."""
-
-    cm = sk_metrics.confusion_matrix(
-        y_true,
-        y_pred,
-        labels=labels,
-    )
-
-    fig, ax = plt.subplots(figsize=(8, 7))
-
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=labels,
-        yticklabels=labels,
-        cbar=True,
-        ax=ax,
-    )
-
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("True")
-    ax.set_title(title)
-
-    fig.tight_layout()
-    fig.savefig(filename, dpi=150)
-    plt.close(fig)
 
 def build_classifier_datamodule(args, representation: str):
     """
@@ -277,7 +242,7 @@ def _main():
             "macro_f1": macro_f1,
         }
 
-        save_confusion_matrix(
+        ml_metrics.save_confusion_matrix(
                 y_true=ship_target,
                 y_pred=ship_pred,
                 filename=os.path.join(output_dir, f"{model_name}_ship.png"),
@@ -295,7 +260,7 @@ def _main():
             "macro_f1": macro_f1,
         }
 
-        save_confusion_matrix(
+        ml_metrics.save_confusion_matrix(
                 y_true=channel_target,
                 y_pred=channel_pred,
                 filename=os.path.join(output_dir, f"{model_name}_channel.png"),
@@ -313,7 +278,7 @@ def _main():
                 "macro_f1": macro_f1,
             }
 
-        save_confusion_matrix(
+        ml_metrics.save_confusion_matrix(
                 y_true=shallow_target,
                 y_pred=shallow_pred,
                 filename=os.path.join(output_dir, f"{model_name}_shallow.png"),

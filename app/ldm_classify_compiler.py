@@ -37,37 +37,8 @@ import pandas as pd
 import seaborn as sns
 from sklearn import metrics as sk_metrics
 
+import lps_ml.utils.metrics as ml_metrics
 
-def save_confusion_matrix(
-    y_true: typing.Sequence[int],
-    y_pred: typing.Sequence[int],
-    filename: str,
-    labels: typing.Sequence[int],
-    title: str,
-) -> None:
-    """Save a confusion matrix as an image."""
-
-    cm = sk_metrics.confusion_matrix(y_true, y_pred, labels=labels,)
-
-    fig, ax = plt.subplots(figsize=(8, 7))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=labels,
-        yticklabels=labels,
-        cbar=True,
-        ax=ax,
-    )
-
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("True")
-    ax.set_title(title)
-
-    fig.tight_layout()
-    fig.savefig(filename, dpi=150)
-    plt.close(fig)
 
 def calculate_performance(
     df: pd.DataFrame,
@@ -217,7 +188,7 @@ def main() -> None:
 
         filename = os.path.join(args.output_dir, f"{task}_confusion_matrix.png")
 
-        save_confusion_matrix(
+        ml_metrics.save_confusion_matrix(
             y_true=y_true,
             y_pred=y_pred,
             filename=filename,

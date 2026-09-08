@@ -9,6 +9,7 @@ import umap
 import numpy as np
 import matplotlib.pyplot as plt
 import sklearn.manifold as sk_manifold
+import tikzplotlib as tikz
 
 def umap_string(model_name: str, output_dir: str) -> str:
     aux_name = model_name.replace("/", "_")
@@ -43,6 +44,9 @@ def plot_2d_embedding(
     plt.legend()
     plt.tight_layout()
     plt.savefig(filename, dpi=300)
+
+    tikz_filename = os.path.splitext(filename)[0] + ".tikz"
+    tikz.save(tikz_filename)
     plt.close()
 
 def export_umap(

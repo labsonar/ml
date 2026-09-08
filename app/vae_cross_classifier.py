@@ -55,6 +55,7 @@ import lps_ml.model as ml_model
 import lps_ml.datasets as ml_db
 import lps_ml.utils.device as ml_device
 import lps_ml.utils.general as ml_utils
+import lps_ml.utils.metrics as ml_metrics
 
 def build_datamodule(builder, args, dataset_dir: str):
     """
@@ -196,39 +197,6 @@ def evaluate(
     macro_f1 = sk_metrics.f1_score(y_true, y_pred, average="macro")
 
     return balanced_accuracy, macro_f1, y_true, y_pred
-
-def save_confusion_matrix(
-        y_true,
-        y_pred,
-        labels,
-        filename,
-        title,
-):
-    """
-    Save a confusion matrix using seaborn.
-    """
-
-    cm = sk_metrics.confusion_matrix(y_true, y_pred, labels=labels,)
-
-    fig, ax = plt.subplots(figsize=(8, 7))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=labels,
-        yticklabels=labels,
-        cbar=True,
-        ax=ax,
-    )
-
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("True")
-    ax.set_title(title)
-
-    fig.tight_layout()
-    fig.savefig(filename, dpi=150)
-    plt.close(fig)
 
 def _main():
 
@@ -425,7 +393,7 @@ def _main():
                 f"{model_name}_{dataset_name}_{split}.png"
             )
 
-            save_confusion_matrix(
+            ml_metrics.save_confusion_matrix(
                 y_true=y_true,
                 y_pred=y_pred,
                 labels=labels,

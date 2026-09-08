@@ -7,6 +7,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import sklearn.manifold as sklearn
+import tikzplotlib as tikz
 
 def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str) -> None:
     """
@@ -39,4 +40,8 @@ def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str) -> None:
     plt.tight_layout()
     plt.title(name.replace("_", " ").replace("-", " ").title())
     plt.savefig(filename, bbox_inches='tight')
+
+    tikz_filename = os.path.splitext(filename)[0] + ".tikz"
+    tikz.save(tikz_filename)
+
     plt.close()

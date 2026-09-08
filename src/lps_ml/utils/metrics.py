@@ -3,12 +3,16 @@ Metrics Module
 """
 import typing
 import enum
+import os
 
 import numpy as np
 import pandas as pd
 import sklearn.metrics as sk_metrics
 import scipy.linalg as sci_alg
 import ot
+import matplotlib.pyplot as plt
+import seaborn as sns
+import tikzplotlib as tikz
 
 import torch
 import torch.utils.data as torch_data
@@ -89,6 +93,50 @@ def evaluate_splits(
     df = pd.DataFrame(rows)
     return df.set_index("split")
 
+def save_confusion_matrix(
+        y_true,
+        y_pred,
+        labels,
+        filename,
+        title,
+):
+    """
+    Save a confusion matrix as PNG and TikZ.
+    """
+
+    cm = sk_metrics.confusion_matrix(
+        y_true,
+        y_pred,
+        labels=labels,
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=labels,
+        yticklabels=labels,
+        cbar=True,
+        ax=ax,
+    )
+
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    ax.set_title(title)
+
+    fig.tight_layout()
+
+    # Save PNG
+    fig.savefig(filename, dpi=150)
+
+    # Save TikZ using the same filename
+    tikz_filename = os.path.splitext(filename)[0] + ".tikz"
+    tikz.save(tikz_filename)
+
+    plt.close(fig)
 
 def distribution_statistics(
     values: typing.Union[np.ndarray, typing.Sequence[float]],
