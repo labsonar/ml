@@ -95,6 +95,9 @@ def _main():
     channel_selector.apply(df)
     shallow_selector.apply(df)
 
+    catalog_id = []
+    prediction_fragment_id = []
+    prediction_row_id = []
 
     ship_pred = []
     channel_pred = []
@@ -141,18 +144,22 @@ def _main():
                     shallow_pred.extend(pred.detach().cpu().numpy())
                     shallow_target.extend(shallow_selector.apply(original_df)["Target"].to_numpy())
 
+                catalog_batch = original_df["CATALOG_ID"]
+                catalog_id.extend(catalog_batch.to_numpy())
+                prediction_fragment_id.extend(fragment_ids.to_numpy())
+                prediction_row_id.extend(row_id.to_numpy())
 
     model_name = os.path.basename(os.path.dirname(os.path.normpath(ckpt)))
 
     result = {}
 
     if ship_model is not None:
-        balanced_accuracy = sk_metrics.balanced_accuracy_score(ship_target, ship_pred)
-        macro_f1 = sk_metrics.f1_score(ship_target, ship_pred, average="macro")
+
+        acc, f1 = ml_metrics.calculate_classification_metrics(ship_target, ship_pred)
 
         result["ship"] = {
-            "balanced_accuracy": balanced_accuracy,
-            "macro_f1": macro_f1,
+            "acc": acc,
+            "f1": f1,
         }
 
         ml_metrics.save_confusion_matrix(
@@ -165,12 +172,11 @@ def _main():
             )
 
     if channel_model is not None:
-        balanced_accuracy = sk_metrics.balanced_accuracy_score(channel_target, channel_pred)
-        macro_f1 = sk_metrics.f1_score(channel_target, channel_pred, average="macro")
+        acc, f1 = ml_metrics.calculate_classification_metrics(channel_target, channel_pred)
 
         result["channel"] = {
-            "balanced_accuracy": balanced_accuracy,
-            "macro_f1": macro_f1,
+            "acc": acc,
+            "f1": f1,
         }
 
         ml_metrics.save_confusion_matrix(
@@ -183,13 +189,12 @@ def _main():
             )
 
     if shallow_model is not None:
-        balanced_accuracy = sk_metrics.balanced_accuracy_score(shallow_target, shallow_pred)
-        macro_f1 = sk_metrics.f1_score(shallow_target, shallow_pred, average="macro")
+        acc, f1 = ml_metrics.calculate_classification_metrics(shallow_target, shallow_pred)
 
         result["shallow"] = {
-                "balanced_accuracy": balanced_accuracy,
-                "macro_f1": macro_f1,
-            }
+            "acc": acc,
+            "f1": f1,
+        }
 
         ml_metrics.save_confusion_matrix(
                 y_true=shallow_target,
@@ -204,6 +209,9 @@ def _main():
     df.to_csv(os.path.join(output_dir, f"{model_name}.csv"), index=False)
 
     predictions_df = pd.DataFrame({
+        "CATALOG_ID": catalog_id,
+        "fragment_id": prediction_fragment_id,
+        "row_id": prediction_row_id,
         "ship_target": ship_target,
         "ship_pred": ship_pred,
         "channel_target": channel_target,

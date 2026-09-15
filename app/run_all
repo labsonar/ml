@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+app/vae_latent_analysis
+
+for model_path in /data/models/*.ts; do
+
+    model=$(basename "$model_path" .ts)
+
+    echo "========================================"
+    echo "Processing model: $model"
+    echo "========================================"
+
+    app/vae_classifiers_analysis "$model"
+
+    app/ldm_train "$model"
+
+done

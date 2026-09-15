@@ -3,9 +3,15 @@ set -e
 
 MODEL="$1"
 CNN_INPUT="$2"
+SIMPLE="${3:-false}"
 
 if [ -z "$MODEL" ] || [ -z "$CNN_INPUT" ]; then
     echo "Usage: $0 <model> <cnn1d|cnn2d>"
+    exit 1
+fi
+
+if [ "$SIMPLE" != "false" ] && [ "$SIMPLE" != "--simple" ]; then
+    echo "Error: optional argument must be '--simple'"
     exit 1
 fi
 
@@ -43,6 +49,61 @@ if [ ! -f "${VAE_DATASET}/data/999.wav" ]; then
     python app/vae_reconstructor.py --model "/data/models/${MODEL}.ts"
 else
     echo "Dataset already reconstructed: ${VAE_DATASET}"
+fi
+
+if [ "$SIMPLE" = "--simple" ]; then
+
+    echo ""
+    echo "========= Train channel classifier on original dataset ========="
+
+    if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original/best.ckpt" ]; then
+        echo "Training original channel classifier"
+
+        python app/train_classifier.py \
+            --model "${CNN}" \
+            --ie-target "LOCAL_ID" \
+            --ie-representation "${REPRESENTATION}" \
+            --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original" \
+            --ie-dataset-dir /data/iemanja_truncated
+    else
+        echo "Original channel classifier already trained"
+    fi
+
+
+    echo ""
+    echo "========= Train channel classifier on reconstructed dataset ========="
+
+    if [ ! -f "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}/best.ckpt" ]; then
+        echo "Training reconstructed channel classifier: ${MODEL}"
+
+        python app/train_classifier.py \
+            --model "${CNN}" \
+            --ie-target "LOCAL_ID" \
+            --ie-representation "${REPRESENTATION}" \
+            --output-dir "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}" \
+            --ie-dataset-dir "${VAE_DATASET}"
+    else
+        echo "Reconstructed channel classifier already trained: ${MODEL}"
+    fi
+
+
+    echo ""
+    echo "========= Cross evaluation: channel ========="
+
+    python app/vae_cross_classifier.py \
+        --ie-representation "${REPRESENTATION}" \
+        --ie-target "LOCAL_ID" \
+        --model1-type "${CNN}" \
+        --model1 "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/original" \
+        --dataset1-dir /data/iemanja_truncated \
+        --model2-type "${CNN}" \
+        --model2 "${BASE_DIR}/trained_models/${MODEL_DIR}/channel/${MODEL}" \
+        --dataset2-dir "${VAE_DATASET}" \
+        --output-dir "${BASE_DIR}/cross_comparison/${MODEL}/${MODEL_DIR}/channel"
+
+    echo ""
+    echo "========= Simple mode finished ========="
+    exit 0
 fi
 
 

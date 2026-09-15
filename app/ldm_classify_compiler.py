@@ -40,6 +40,7 @@ from sklearn import metrics as sk_metrics
 import lps_ml.utils.metrics as ml_metrics
 
 
+
 def calculate_performance(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -71,16 +72,11 @@ def calculate_performance(
         y_true = valid[target_column].astype(int)
         y_pred = valid[pred_column].astype(int)
 
+        acc, f1 = ml_metrics.calculate_classification_metrics(y_true, y_pred)
+
         result[task] = {
-            "balanced_accuracy": sk_metrics.balanced_accuracy_score(
-                y_true,
-                y_pred,
-            ),
-            "macro_f1": sk_metrics.f1_score(
-                y_true,
-                y_pred,
-                average="macro",
-            ),
+            "acc": acc,
+            "f1": f1,
         }
 
     return pd.DataFrame(result)
@@ -116,6 +112,9 @@ def main() -> None:
         df = pd.read_csv(filename)
 
         expected_columns = [
+            "CATALOG_ID",
+            "fragment_id",
+            "row_id",
             "ship_target",
             "ship_pred",
             "channel_target",

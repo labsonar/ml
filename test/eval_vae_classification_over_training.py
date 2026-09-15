@@ -13,10 +13,10 @@ import matplotlib.pyplot as plt
 import torch
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import balanced_accuracy_score, f1_score
 
 import lps_ml.datasets as ml_db
 import lps_ml.utils.general as ml_utils
+import lps_ml.utils.metrics as ml_metrics
 import lps_ml.core.cv as ml_cv
 
 
@@ -178,25 +178,17 @@ def evaluate_model(
 
     y_pred = classifier.predict(X_val)
 
-    balanced_accuracy = balanced_accuracy_score(
-        y_val,
-        y_pred,
-    )
 
-    macro_f1 = f1_score(
-        y_val,
-        y_pred,
-        average="macro",
-    )
+    acc, f1 = ml_metrics.calculate_classification_metrics(y_val, y_pred)
 
     print(
-        f"\tBalanced Accuracy: {balanced_accuracy:.6f}"
-        f"\n\tMacro F1:           {macro_f1:.6f}"
+        f"\tAccuracy: {acc:.6f}"
+        f"\n\tF1:           {f1:.6f}"
     )
 
     return {
-        "balanced_accuracy": float(balanced_accuracy),
-        "macro_f1": float(macro_f1),
+        "acc": float(acc),
+        "f1": float(f1),
     }
 
 

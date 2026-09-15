@@ -17,15 +17,15 @@ if [ ! -f "$VAE_MODEL" ]; then
     exit 1
 fi
 
-app/vae_cross_classifier "${MODEL}" 1d
+# app/vae_cross_classifier "${MODEL}" 1d
 app/vae_cross_classifier "${MODEL}" 2d
 
-python app/vae_vs_original.py \
-    --dataset1-dir "$ORIGINAL_DATASET" \
-    --dataset2-dir "$VAE_DATASET" \
-    --ie-representation raw \
-    --model cnn1d \
-    --output-dir "./result/vae_classifiers/original_vs_reconstructed/${MODEL}/time"
+# python app/vae_vs_original.py \
+#     --dataset1-dir "$ORIGINAL_DATASET" \
+#     --dataset2-dir "$VAE_DATASET" \
+#     --ie-representation raw \
+#     --model cnn1d \
+#     --output-dir "./result/vae_classifiers/original_vs_reconstructed/${MODEL}/time"
 
 python app/vae_vs_original.py \
     --dataset1-dir "$ORIGINAL_DATASET" \

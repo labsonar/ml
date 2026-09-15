@@ -136,68 +136,6 @@ def verify_split_parity(
     print("All splits have identical file IDs.")
     print("=" * 70)
 
-def predict(
-        model: torch.nn.Module,
-        dataloader: torch_data.DataLoader,
-        device,
-):
-    """
-    Generate predictions and targets.
-
-    Returns:
-        y_true
-        y_pred
-    """
-
-    model.eval()
-    model.to(device)
-
-    y_true = []
-    y_pred = []
-
-    with torch.inference_mode():
-
-        for x, y in dataloader:
-
-            # Paired datasets are not expected for this experiment.
-            if isinstance(x, list):
-                raise RuntimeError(
-                    "Cross-domain classifier evaluation expects "
-                    "a non-paired DataModule."
-                )
-
-            x = x.to(device)
-
-            output = model(x)
-
-            if output.ndim == 1:
-                pred = (output >= 0.5).long()
-            elif output.ndim == 2 and output.shape[1] == 1:
-                pred = (output[:, 0] >= 0.5).long()
-            else:
-                pred = torch.argmax(output, dim=1)
-
-            y_true.extend(y.detach().cpu().numpy())
-            y_pred.extend(pred.detach().cpu().numpy())
-
-    return np.asarray(y_true), np.asarray(y_pred)
-
-def evaluate(
-        model,
-        dataloader,
-        device,
-):
-    """
-    Evaluate a classifier.
-    """
-
-    y_true, y_pred = predict(model=model, dataloader=dataloader, device=device)
-
-    balanced_accuracy = sk_metrics.balanced_accuracy_score(y_true, y_pred)
-    macro_f1 = sk_metrics.f1_score(y_true, y_pred, average="macro")
-
-    return balanced_accuracy, macro_f1, y_true, y_pred
-
 def _main():
 
     parser = argparse.ArgumentParser(
@@ -364,20 +302,20 @@ def _main():
 
             print(f"{model_name} -> {dataset_name} ({split})")
 
-            balanced_accuracy, macro_f1, y_true, y_pred = evaluate(model=model,
+            acc, f1, y_true, y_pred = ml_metrics.evaluate_classifier(model=model,
                                                                    dataloader=loader,
                                                                    device=device)
 
-            print(f"    BA      : {balanced_accuracy:.4f}")
-            print(f"    Macro-F1: {macro_f1:.4f}")
+            print(f"    ACC: {acc:.4f}")
+            print(f"     F1: {f1:.4f}")
 
             metrics.append(
                 {
                     "split": split,
                     "model": model_name,
                     "dataset": dataset_name,
-                    "balanced_accuracy": balanced_accuracy,
-                    "macro_f1": macro_f1,
+                    "acc": acc,
+                    "f1": f1,
                 }
             )
 
@@ -473,27 +411,27 @@ def _main():
                 "in_domain": dataset1_name,
                 "cross_domain": dataset2_name,
 
-                "in_domain_balanced_accuracy":
-                    m1_in["balanced_accuracy"],
+                "in_domain_acc":
+                    m1_in["acc"],
 
-                "cross_domain_balanced_accuracy":
-                    m1_cross["balanced_accuracy"],
+                "cross_domain_acc":
+                    m1_cross["acc"],
 
-                "delta_balanced_accuracy":
-                    m1_cross["balanced_accuracy"]
+                "delta_acc":
+                    m1_cross["acc"]
                     -
-                    m1_in["balanced_accuracy"],
+                    m1_in["acc"],
 
-                "in_domain_macro_f1":
-                    m1_in["macro_f1"],
+                "in_domain_f1":
+                    m1_in["f1"],
 
-                "cross_domain_macro_f1":
-                    m1_cross["macro_f1"],
+                "cross_domain_f1":
+                    m1_cross["f1"],
 
-                "delta_macro_f1":
-                    m1_cross["macro_f1"]
+                "delta_f1":
+                    m1_cross["f1"]
                     -
-                    m1_in["macro_f1"],
+                    m1_in["f1"],
             }
         )
 
@@ -516,27 +454,27 @@ def _main():
                 "in_domain": dataset2_name,
                 "cross_domain": dataset1_name,
 
-                "in_domain_balanced_accuracy":
-                    m2_in["balanced_accuracy"],
+                "in_domain_acc":
+                    m2_in["acc"],
 
-                "cross_domain_balanced_accuracy":
-                    m2_cross["balanced_accuracy"],
+                "cross_domain_acc":
+                    m2_cross["acc"],
 
-                "delta_balanced_accuracy":
-                    m2_cross["balanced_accuracy"]
+                "delta_acc":
+                    m2_cross["acc"]
                     -
-                    m2_in["balanced_accuracy"],
+                    m2_in["acc"],
 
-                "in_domain_macro_f1":
-                    m2_in["macro_f1"],
+                "in_domain_f1":
+                    m2_in["f1"],
 
-                "cross_domain_macro_f1":
-                    m2_cross["macro_f1"],
+                "cross_domain_f1":
+                    m2_cross["f1"],
 
-                "delta_macro_f1":
-                    m2_cross["macro_f1"]
+                "delta_f1":
+                    m2_cross["f1"]
                     -
-                    m2_in["macro_f1"],
+                    m2_in["f1"],
             }
         )
 

@@ -20,11 +20,37 @@ import torch.utils.data as torch_data
 import lps_ml.utils.device as ml_device
 import lps_ml.utils.general as ml_general
 
+
+def calculate_classification_metrics(y_true, y_pred) -> typing.Tuple[float, float]:
+    """
+    Calculate classification metrics based on the number of classes
+    present in y_true.
+
+    For binary classification:
+        - Accuracy
+        - F1 score
+
+    For multiclass classification:
+        - Balanced accuracy
+        - Macro F1
+    """
+    n_classes = len(np.unique(y_true))
+
+    if n_classes == 2:
+        accuracy = sk_metrics.accuracy_score(y_true, y_pred)
+        f1 = sk_metrics.f1_score(y_true, y_pred, average="binary")
+
+        return float(accuracy), float(f1)
+
+    balanced_accuracy = sk_metrics.balanced_accuracy_score(y_true, y_pred)
+    macro_f1 = sk_metrics.f1_score(y_true, y_pred, average="macro")
+    return float(balanced_accuracy), float(macro_f1)
+
 def evaluate_classifier(
     model: torch.nn.Module,
     dataloader: torch_data.DataLoader,
     device: typing.Optional[torch.device] = None,
-) -> typing.Tuple[float, float]:
+) -> typing.Tuple[float, float, typing.List[int], typing.List[int]]:
     """
     Evaluate a binary or multiclass classifier and return
     (balanced_accuracy, macro_f1).
@@ -66,10 +92,8 @@ def evaluate_classifier(
                 y_true.extend(y.cpu().numpy())
                 y_pred.extend(pred.cpu().numpy())
 
-        balanced_accuracy = sk_metrics.balanced_accuracy_score(y_true, y_pred)
-        macro_f1 = float(sk_metrics.f1_score(y_true, y_pred, average="macro"))
-
-        return balanced_accuracy, macro_f1
+        accuracy, f1 = calculate_classification_metrics(y_true, y_pred)
+        return accuracy, f1, y_true, y_pred
 
 def evaluate_splits(
     model: torch.nn.Module,
@@ -83,11 +107,11 @@ def evaluate_splits(
 
     rows = []
     for split_name, loader in loaders.items():
-        balanced_accuracy, macro_f1 = evaluate_classifier(model, loader, device=device)
+        balanced_accuracy, macro_f1, _, _ = evaluate_classifier(model, loader, device=device)
         rows.append({
             "split": split_name,
-            "balanced_accuracy": balanced_accuracy,
-            "macro_f1": macro_f1,
+            "acc": balanced_accuracy,
+            "f1": macro_f1,
         })
 
     df = pd.DataFrame(rows)

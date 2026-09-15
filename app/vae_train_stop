@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+MODEL_DIR="$1"
+
+if [ -z "$MODEL_DIR" ]; then
+    echo "Usage: $0 <model_dir>"
+    exit 1
+fi
+
+MODELS="$MODEL_DIR/*.ts"
+
+for model_path in $MODELS; do
+
+    model=$(basename "$model_path" .ts)
+
+    echo "========================================"
+    echo "Processing model: $model"
+    echo "========================================"
+
+    app/vae_cross_classifier "${model}" 2d --simple
+
+done
