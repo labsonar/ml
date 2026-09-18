@@ -15,9 +15,13 @@ setup file.
 import os
 import setuptools
 
-# Using the grandparent directory (git repository) as package name
-grandparent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-package_name = os.path.basename(grandparent_dir).lower()
+package_dir = os.path.dirname(os.path.abspath(__file__))
+packages = setuptools.find_packages()
+
+if not packages:
+    raise RuntimeError("No Python package found")
+
+package_name = packages[0]
 
 # Setup configuration for the package
 setuptools.setup(
