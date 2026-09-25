@@ -3,6 +3,7 @@
 """
 import abc
 import os
+import overrides
 import typing
 import json
 import multiprocessing
@@ -19,52 +20,136 @@ import lps_ml.core.cv as ml_cv
 import lps_utils.hashable as utils_hash
 import lps_ml.core.loader as ml_loader
 import lps_ml.core.processor as ml_proc
+import lps_ml.core.selection as ml_sel
 
 class BaseDataModule(lightning.LightningDataModule):
     """ Basic DataModule """
 
-    def get_sample_shape(self, subset: str = "train") -> typing.List[int]:
-        """
-        Returns the shape of the dataset samples.
-        """
-        if not getattr(self, "_has_setup", False):
-            self.prepare_data()
-            self.setup(subset)
+    @abc.abstractmethod
+    def setup(self, stage=None) -> None:
+        """Setup datasets, folds and internal state."""
 
-        if subset == "train":
-            loader = self.train_dataloader()
-        elif subset == "val":
-            loader = self.val_dataloader()
-        elif subset == "test":
-            loader = self.test_dataloader()
-        elif subset == "predict":
-            loader = self.predict_dataloader()
-        else:
-            raise ValueError(f"invalid subset: {subset}")
+    @abc.abstractmethod
+    def set_fold(self, fold_idx: int) -> None:
+        """Activate a cross-validation fold."""
 
-        batch = next(iter(loader))
-        x = batch[0]
-        if isinstance(x, list):
-            x = x[0]
-        return list(x.shape[1:])
+    @abc.abstractmethod
+    def get_n_folds(self) -> int:
+        """Return the number of available folds."""
 
     @abc.abstractmethod
     def get_n_targets(self) -> int:
-        """ Return the number of targets in dataset. """
+        """Return the number of targets/classes."""
+
+    @abc.abstractmethod
+    def train_dataloader(self) -> torch_data.DataLoader:
+        """Return train dataloader."""
+
+    @abc.abstractmethod
+    def val_dataloader(self) -> torch_data.DataLoader:
+        """Return validation dataloader."""
+
+    @abc.abstractmethod
+    def test_dataloader(self) -> torch_data.DataLoader:
+        """Return test dataloader."""
+
+    @abc.abstractmethod
+    def all_dataloader(self) -> torch_data.DataLoader:
+        """Return a DataLoader containing the complete dataset."""
+
+    @abc.abstractmethod
+    def to_df(self) -> pd.DataFrame:
+        """Return dataset description."""
+
+    @abc.abstractmethod
+    def to_compile_df(self) -> pd.DataFrame:
+        """Return compiled dataset information."""
+
+    def get_sample_shape(self, subset: str = "train") -> typing.List[int]:
+        """Return the shape of dataset samples."""
+
+        if not getattr(self, "_has_setup", False):
+            self.setup()
+
+        loader = self.get_dataloader_by_role(subset)
+
+        batch = next(iter(loader))
+        x = batch[0]
+
+        if isinstance(x, list):
+            x = x[0]
+
+        return list(x.shape[1:])
+
+    def get_dataloader_by_role(
+        self,
+        role: ml_cv.FoldRole | str | None = None
+    ) -> torch_data.DataLoader:
+        """Return DataLoader for a given fold role."""
+
+        role = self._parse_fold_role(role)
+
+        if role is None:
+            return self.all_dataloader()
+
+        if role == ml_cv.FoldRole.TRAIN:
+            return self.train_dataloader()
+
+        if role == ml_cv.FoldRole.VALIDATION:
+            return self.val_dataloader()
+
+        if role == ml_cv.FoldRole.TEST:
+            return self.test_dataloader()
+
+        raise ValueError(f"Unsupported fold role: {role}")
+
+    def get_role_dataloaders(
+        self,
+        roles: typing.Sequence[str | ml_cv.FoldRole] | None = None
+    ) -> typing.Dict[str, torch_data.DataLoader]:
+        """Return DataLoaders for multiple roles."""
+        roles = roles or ["train", "val", "test"]
+
+        return {
+            str(role): self.get_dataloader_by_role(role)
+            for role in roles
+        }
 
     def verify_sample_shapes(self, other: "BaseDataModule") -> None:
-        """
-        Sanity check that two DataModules produce samples of the same shape
-        """
+        """Verify that two DataModules produce compatible samples."""
+
         shape1 = self.get_sample_shape()
         shape2 = other.get_sample_shape()
 
         if shape1 != shape2:
             raise RuntimeError(
                 "The two datamodules have different sample shapes:\n"
-                f"\tself = {shape1}\n"
-                f"\totherdm2 = {shape2}"
+                f"\tself  = {shape1}\n"
+                f"\tother = {shape2}"
             )
+
+    @staticmethod
+    def _parse_fold_role(role: ml_cv.FoldRole | str | None) -> ml_cv.FoldRole | None:
+
+        if role is None:
+            return None
+
+        if isinstance(role, ml_cv.FoldRole):
+            return role
+
+        role = role.lower()
+
+        mapping = {
+            "train": ml_cv.FoldRole.TRAIN,
+            "val": ml_cv.FoldRole.VALIDATION,
+            "validation": ml_cv.FoldRole.VALIDATION,
+            "test": ml_cv.FoldRole.TEST,
+        }
+
+        try:
+            return mapping[role]
+        except KeyError as e:
+            raise ValueError(f"Unsupported fold role: {role}") from e
 
 class BaseProcessedDataset(torch_data.Dataset):
     """Base dataset with common fragment loading logic."""
@@ -88,6 +173,10 @@ class BaseProcessedDataset(torch_data.Dataset):
             x = self.transform(x)
 
         return torch.from_numpy(x).float()
+
+    @abc.abstractmethod
+    def __getitem__(self, idx):
+        """Return a dataset sample."""
 
 class ProcessedDataset(BaseProcessedDataset):
     """Dataset for single fragments with target."""
@@ -128,6 +217,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
                  batch_size: int = 32,
                  num_workers: int = None,
                  cv: ml_cv.CrossValidator = None,
+                 selection: ml_sel.Selector | None = None,
                  transform=None,
                  id_column: str = "ID",
                  target_column: str = "Target",
@@ -135,7 +225,14 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         super().__init__()
         self.file_loader = file_loader
         self.file_processor = file_processor
+
+        self.complete_df = description_df
+
+        if selection is not None:
+            description_df = selection.apply(description_df)
         self.description_df = description_df
+
+        self.selection = selection
         self.batch_size = batch_size
         self.num_workers = num_workers or max(1, multiprocessing.cpu_count() // 2)
         self.cv = cv or ml_cv.HoldOutCV()
@@ -158,11 +255,18 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         self.processed_dir = os.path.join(processed_dir, f"{hash(self)}")
         self.csv_file = os.path.join(self.processed_dir, "description.csv")
 
+        self._has_setup = False
+
     def _get_params(self):
+        df_hash = pd.util.hash_pandas_object(
+            self.complete_df,
+            index=True
+        ).sum()
+
         return {
             "file_loader": self.file_loader.__get_hash_base__(),
             "file_processor": self.file_processor.__get_hash_base__(),
-            "group_column": self.group_column,
+            "description_df": int(df_hash),
         }
 
     def prepare_data(self):
@@ -178,7 +282,8 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             processed_ids = set(existing_df["file_id"].unique())
             fragment_idx = existing_df["id_fragment"].max() + 1 if not existing_df.empty else 0
 
-        pending_ids = [fid for fid in self.file_ids if fid not in processed_ids]
+        complete_file_ids = self.complete_df[self.id_column].to_list()
+        pending_ids = [fid for fid in complete_file_ids if fid not in processed_ids]
         if not pending_ids:
             return
 
@@ -213,6 +318,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
                 json.dump(description, f, indent=4, ensure_ascii=False)
             print(f"[prepare_data] Description saved to {desc_file}")
 
+    @overrides.overrides
     def setup(self, stage=None):
         """
         Loads the metadata CSV and generates cross-validation folds.
@@ -220,7 +326,11 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         if not os.path.exists(self.csv_file):
             self.prepare_data()
 
+        if self._has_setup:
+            return
+
         df = pd.read_csv(self.csv_file)
+        df = df[df["file_id"].isin(self.file_ids)].copy()
 
         id_to_target = dict(zip(self.file_ids, self.targets))
         df[self.target_column] = df["file_id"].map(id_to_target)
@@ -261,6 +371,9 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
 
         self.set_fold(0)
 
+        self._has_setup = True
+
+    @overrides.overrides
     def set_fold(self, fold_idx: int):
         """
         Sets the active fold for training/validation/test split.
@@ -283,6 +396,7 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         self.val_df = df[df["group"] == ml_cv.FoldRole.VALIDATION]
         self.test_df = df[df["group"] == ml_cv.FoldRole.TEST]
 
+    @overrides.overrides
     def get_n_folds(self) -> int:
         """ Returns the number of folds generated by the cross-validator. """
         return len(self.folds)
@@ -305,18 +419,22 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             num_workers=self.num_workers
         )
 
+    @overrides.overrides
     def train_dataloader(self) -> torch_data.DataLoader:
         """ Returns a torch_data.DataLoader for train subset. """
         return self._build_dataloader(self.train_df, True)
 
+    @overrides.overrides
     def val_dataloader(self) -> torch_data.DataLoader:
         """ Returns a torch_data.DataLoader for validation subset. """
         return self._build_dataloader(self.val_df, False)
 
+    @overrides.overrides
     def test_dataloader(self) -> torch_data.DataLoader:
         """ Returns a torch_data.DataLoader for test subset. """
         return self._build_dataloader(self.test_df, False)
 
+    @overrides.overrides
     def all_dataloader(self) -> torch_data.DataLoader:
         """ Returns a torch_data.DataLoader for all subset. """
         return self._build_dataloader(self.dataframe, False)
@@ -372,47 +490,19 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
         """ Returns a dictionary mapping target -> DataLoader. For all data. """
         return self._dataloader_dict(self.dataframe, shuffle=False)
 
-
+    @overrides.overrides
     def get_n_targets(self) -> int:
         return len(set(self.targets))
 
+    @overrides.overrides
     def to_df(self) -> pd.DataFrame:
         """ Returns dataset information as a DataFrame. """
         return self.description_df
 
+    @overrides.overrides
     def to_compile_df(self) -> pd.DataFrame:
         """ Returns dataset compiled information as a DataFrame. """
         return self.description_df.groupby(self.target_column).size().reset_index(name='Qty')
-
-    def get_dataloader_by_role(self, role: ml_cv.FoldRole | str | None = None) -> \
-        torch_data.DataLoader:
-        """ Returns the DataLoader for a given cv.FoldRole. """
-
-        if role is None:
-            return self.all_dataloader()
-
-        if isinstance(role, str):
-            role = ml_cv.FoldRole[role.upper()]
-
-        if role == ml_cv.FoldRole.TRAIN:
-            return self.train_dataloader()
-        if role == ml_cv.FoldRole.VALIDATION:
-            return self.val_dataloader()
-        if role == ml_cv.FoldRole.TEST:
-            return self.test_dataloader()
-
-        raise ValueError(f"Unsupported fold role: {role}")
-
-    def get_role_dataloaders(self,
-        roles: typing.Sequence[str| ml_cv.FoldRole] = ("train", "val", "test")
-    ) -> typing.Dict[str, torch_data.DataLoader]:
-        """
-        Returns {role_name: DataLoader}
-        """
-        return {
-            str(role): self.get_dataloader_by_role(role) for role in roles
-        }
-
 
     def get_dataloader_dict_by_role(self, role: ml_cv.FoldRole | str | None = None) -> \
         typing.Dict[int, "torch_data.DataLoader"]:
@@ -623,4 +713,167 @@ class DomainDataset(torch_data.Dataset):
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
+        )
+
+class CombinedDataModule(BaseDataModule):
+    """DataModule combining multiple AudioDataModules."""
+
+    def __init__(
+        self,
+        *data_modules: AudioDataModule,
+        batch_size: int | None = None,
+        num_workers: int | None = None,
+    ):
+        super().__init__()
+
+        if len(data_modules) < 2:
+            raise ValueError("CombinedDataModule requires at least two DataModules.")
+
+        self.data_modules = data_modules
+
+        self.batch_size = batch_size or data_modules[0].batch_size
+        self.num_workers = num_workers or data_modules[0].num_workers
+        self.fold_idx = None
+
+    @overrides.overrides
+    def setup(self, stage=None):
+        """Setup and validate all underlying DataModules."""
+        for dm in self.data_modules:
+            dm.setup(stage)
+
+        self._validate_compatibility()
+
+    def _validate_compatibility(self):
+        """Validate compatibility between all underlying DataModules."""
+
+        reference = self.data_modules[0]
+
+        reference_folds = reference.get_n_folds()
+        for dm in self.data_modules[1:]:
+            if dm.get_n_folds() != reference_folds:
+                raise RuntimeError(
+                    "Incompatible number of folds between DataModules: "
+                    f"{reference_folds} != {dm.get_n_folds()}."
+                )
+
+        reference_targets = reference.get_n_targets()
+        for dm in self.data_modules[1:]:
+            if dm.get_n_targets() != reference_targets:
+                raise RuntimeError(
+                    "Incompatible number of targets between DataModules: "
+                    f"{reference_targets} != {dm.get_n_targets()}."
+                )
+
+        reference_shape = reference.get_sample_shape()
+        for dm in self.data_modules[1:]:
+            shape = dm.get_sample_shape()
+
+            if shape != reference_shape:
+                raise RuntimeError(
+                    "Incompatible sample shapes between DataModules: "
+                    f"{reference_shape} != {shape}."
+                )
+
+    @overrides.overrides
+    def set_fold(self, fold_idx: int):
+        """Set the active fold in all underlying DataModules."""
+
+        if not 0 <= fold_idx < self.get_n_folds():
+            raise ValueError(
+                f"Invalid fold index {fold_idx} "
+                f"(available: 0-{self.get_n_folds() - 1})."
+            )
+
+        for dm in self.data_modules:
+            dm.set_fold(fold_idx)
+
+        self.fold_idx = fold_idx
+
+    @overrides.overrides
+    def get_n_folds(self) -> int:
+        """Return the number of folds."""
+        return self.data_modules[0].get_n_folds()
+
+    @overrides.overrides
+    def get_n_targets(self) -> int:
+        """Return the number of targets."""
+        return self.data_modules[0].get_n_targets()
+
+    def _combine_loaders(
+        self,
+        loaders: list[torch_data.DataLoader],
+        shuffle: bool,
+    ) -> torch_data.DataLoader:
+        """Combine datasets from multiple DataLoaders."""
+
+        dataset = torch_data.ConcatDataset(
+            [loader.dataset for loader in loaders]
+        )
+
+        return torch_data.DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            num_workers=self.num_workers,
+        )
+
+    @overrides.overrides
+    def train_dataloader(self) -> torch_data.DataLoader:
+        """Return combined training DataLoader."""
+        return self._combine_loaders(
+            [dm.train_dataloader() for dm in self.data_modules],
+            shuffle=True,
+        )
+
+    @overrides.overrides
+    def val_dataloader(self) -> torch_data.DataLoader:
+        """Return combined validation DataLoader."""
+
+        return self._combine_loaders(
+            [dm.val_dataloader() for dm in self.data_modules],
+            shuffle=False,
+        )
+
+    @overrides.overrides
+    def test_dataloader(self) -> torch_data.DataLoader:
+        """Return combined test DataLoader."""
+
+        return self._combine_loaders(
+            [dm.test_dataloader() for dm in self.data_modules],
+            shuffle=False,
+        )
+
+    @overrides.overrides
+    def all_dataloader(self) -> torch_data.DataLoader:
+        """Return combined DataLoader with all data."""
+
+        return self._combine_loaders(
+            [dm.all_dataloader() for dm in self.data_modules],
+            shuffle=False,
+        )
+
+    @overrides.overrides
+    def get_sample_shape(self, subset="train") -> typing.List[int]:
+        """Return the common sample shape."""
+
+        return self.data_modules[0].get_sample_shape(subset)
+
+    @overrides.overrides
+    def to_df(self) -> pd.DataFrame:
+        """Return combined description DataFrame."""
+
+        return pd.concat(
+            [dm.to_df() for dm in self.data_modules],
+            ignore_index=True,
+        )
+
+    @overrides.overrides
+    def to_compile_df(self) -> pd.DataFrame:
+        """Return combined target counts."""
+
+        return (
+            self.to_df()
+            .groupby("Target")
+            .size()
+            .reset_index(name="Qty")
         )

@@ -84,7 +84,11 @@ class ConstraintFilter(Filter):
         return input_df.loc[mask]
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, ConstraintFilter) and self.constraints == other.constraints
+        return (
+            isinstance(other, ConstraintFilter)
+            and self.constraints == other.constraints
+            and self.remove_elements_in == other.remove_elements_in
+        )
 
 class LabelFilter(ConstraintFilter):
     """Simplified filter for selecting rows where column values are in a list."""

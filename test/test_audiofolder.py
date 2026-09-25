@@ -13,7 +13,7 @@ import argparse
 import lps_utils.quantities as lps_qty
 import lps_ml.datasets as ml_db
 import lps_ml.audio_processors as ml_procs
-import lps_ml.datasets.selection as ml_sel
+import lps_ml.core.selection as ml_sel
 
 def _main():
     parser = argparse.ArgumentParser(

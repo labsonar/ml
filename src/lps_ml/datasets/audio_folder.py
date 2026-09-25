@@ -17,7 +17,7 @@ import pandas as pd
 
 import lps_utils.utils as lps_utils
 import lps_ml.core as ml_core
-import lps_ml.datasets.selection as ml_sel
+import lps_ml.core.selection as ml_sel
 
 class AudioFolder(ml_core.AudioDataModule):
     """Generic DataModule for datasets organized by directory per class."""
@@ -94,12 +94,11 @@ class AudioFolder(ml_core.AudioDataModule):
                 ml_sel.LabelTarget(column="Target", values=unique_targets)
             )
 
-        df_selected = selection.apply(df)
-
         super().__init__(
-            file_loader=self.loader(input_dir, df_selected),
+            file_loader=self.loader(input_dir, df),
             file_processor=file_processor,
-            description_df=df_selected,
+            description_df=df,
+            selection=selection,
             processed_dir=processed_dir,
             batch_size=batch_size,
             num_workers=num_workers,

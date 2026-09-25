@@ -22,7 +22,7 @@ import lps_ml.audio_processors as ml_procs
 import lps_ml.datasets as ml_db
 import lps_ml.utils.general as ml_utils
 import lps_ml.datasets.iara as ml_iara
-import lps_ml.datasets.selection as ml_sel
+import lps_ml.core.selection as ml_sel
 
 class LossPlotCallback(lightning.Callback):
 

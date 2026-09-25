@@ -10,7 +10,7 @@ import numpy as np
 
 import lps_utils.quantities as lps_qty
 import lps_ml.core as ml_core
-import lps_ml.datasets.selection as ml_sel
+import lps_ml.core.selection as ml_sel
 
 class DataCollection(enum.Enum):
     """Enum representing the different audio record collections of IARA."""
@@ -305,11 +305,11 @@ class IARA(ml_core.AudioDataModule):
 
         df = data_collection.to_df()
         selection = selection or ShipLengthClassifier.as_selector()
-        description_df = selection.apply(df)
 
         super().__init__(file_loader = IARA.loader(data_base_dir=data_dir),
                          file_processor = file_processor,
-                         description_df = description_df,
+                         description_df = df,
+                         selection=selection,
                          processed_dir = processed_dir,
                          batch_size = batch_size,
                          num_workers = num_workers,

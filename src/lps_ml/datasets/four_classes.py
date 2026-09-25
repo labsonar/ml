@@ -6,7 +6,7 @@ import os
 import pandas as pd
 
 import lps_ml.core as ml_core
-import lps_ml.datasets.selection as ml_sel
+import lps_ml.core.selection as ml_sel
 
 class FourClasses(ml_core.AudioDataModule):
     """ DataModule for 4 classes dataset. """
@@ -49,7 +49,8 @@ class FourClasses(ml_core.AudioDataModule):
 
         super().__init__(file_loader = FourClasses.loader(data_base_dir=data_dir),
                          file_processor = file_processor,
-                         description_df = selection.apply(df),
+                         description_df = df,
+                         selection = selection,
                          processed_dir = processed_dir,
                          batch_size = batch_size,
                          num_workers = num_workers,

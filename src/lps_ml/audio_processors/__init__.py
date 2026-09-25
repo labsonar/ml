@@ -1,11 +1,12 @@
 """Basic __init__.py
 Allows to import the __all__ by folder name.
 """
-from .time_processors import TimeProcessor, SampleProcessor, CPADetector, ToFloatConverter, SimpleProcessor
+from .time_processors import TimeProcessor, SampleProcessor, CPADetector, ToFloatConverter, SimpleProcessor, Resampler
 from .model_processors import VAEEncoder, CNN2DPipeline
 from .spectral_processors import SpectralProcessor
 
 __all__ = [
+    "Resampler",
     "TimeProcessor",
     "SampleProcessor",
     "CPADetector",

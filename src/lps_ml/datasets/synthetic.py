@@ -13,7 +13,7 @@ import lps_ml.core.loader as ml_loader
 import lps_ml.core.processor as ml_proc
 import lps_ml.core as ml_core
 import lps_ml.audio_processors as ml_procs
-import lps_ml.datasets.selection as ml_sel
+import lps_ml.core.selection as ml_sel
 import lps_sp.acoustical.analysis as lps_analysis
 
 
@@ -134,10 +134,10 @@ class Iemanja(ml_core.AudioDataModule):
         )
 
     @staticmethod
-    def build_selector(
+    def build_filters(
         dynamic_selection: DynamicSelection = DynamicSelection.ALL,
         channel_selection: ChannelSelection = ChannelSelection.ALL,
-    ) -> ml_sel.MultiFilter:
+    ) -> typing.List[ml_sel.Filter]:
 
         filters = []
 
@@ -151,9 +151,7 @@ class Iemanja(ml_core.AudioDataModule):
         if channel_filter is not None:
             filters.append(channel_filter)
 
-        return ml_sel.MultiFilter(
-            filters=filters
-        )
+        return filters
 
     @staticmethod
     def build_column_as_target(target_column: str, map_values: bool = True) -> ml_sel.Selector:
@@ -180,40 +178,29 @@ class Iemanja(ml_core.AudioDataModule):
 
         df = Iemanja.load_df(dataset_dir)
 
-        base_selector = Iemanja.build_selector(
-            dynamic_selection=dynamic_selection,
-            channel_selection=channel_selection
-        )
-
-        df = base_selector.apply(df)
-
         if selection is None:
             selection = Iemanja.build_column_as_target("CLASS")
 
-        df = selection.apply(df)
+        base_filters = Iemanja.build_filters(
+                dynamic_selection=dynamic_selection,
+                channel_selection=channel_selection,
+            )
 
-        self.dynamic_selection = dynamic_selection
-        self.channel_selection = channel_selection
-        self.n_channels = df["SCENARIO_CATALOG_ID"].nunique()
+        selection.filters = base_filters + selection.filters
+
         super().__init__(
             file_loader=file_loader,
             file_processor=file_processor,
             description_df=df,
             processed_dir=processed_dir,
+            selection=selection,
             batch_size=batch_size,
             num_workers=num_workers,
             cv=cv,
             transform=None,
             group_column=group_column
         )
-
-    def _get_params(self):
-        params = super()._get_params()
-        params.update({
-            "dynamic_selection": self.dynamic_selection.name,
-            "channel_selection": self.channel_selection.name,
-        })
-        return params
+        self.n_channels = df["SCENARIO_CATALOG_ID"].nunique()
 
     def get_n_channels(self) -> int:
         return self.n_channels
