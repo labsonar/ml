@@ -720,7 +720,7 @@ class CombinedDataModule(BaseDataModule):
 
     def __init__(
         self,
-        *data_modules: AudioDataModule,
+        data_modules: dict[str, BaseDataModule],
         batch_size: int | None = None,
         num_workers: int | None = None,
     ):
@@ -730,48 +730,56 @@ class CombinedDataModule(BaseDataModule):
             raise ValueError("CombinedDataModule requires at least two DataModules.")
 
         self.data_modules = data_modules
+        first = next(iter(data_modules.values()))
 
-        self.batch_size = batch_size or data_modules[0].batch_size
-        self.num_workers = num_workers or data_modules[0].num_workers
+        self.batch_size = batch_size or first.batch_size
+        self.num_workers = num_workers or first.num_workers
         self.fold_idx = None
+        self._has_setup = False
 
     @overrides.overrides
     def setup(self, stage=None):
         """Setup and validate all underlying DataModules."""
-        for dm in self.data_modules:
+        for dm in self.data_modules.values():
             dm.setup(stage)
 
         self._validate_compatibility()
 
-    def _validate_compatibility(self):
+    def _validate_compatibility(self) -> None:
         """Validate compatibility between all underlying DataModules."""
 
-        reference = self.data_modules[0]
+        modules = list(self.data_modules.items())
+
+        reference_name, reference = modules[0]
 
         reference_folds = reference.get_n_folds()
-        for dm in self.data_modules[1:]:
-            if dm.get_n_folds() != reference_folds:
-                raise RuntimeError(
-                    "Incompatible number of folds between DataModules: "
-                    f"{reference_folds} != {dm.get_n_folds()}."
-                )
-
         reference_targets = reference.get_n_targets()
-        for dm in self.data_modules[1:]:
-            if dm.get_n_targets() != reference_targets:
+        reference_shape = reference.get_sample_shape()
+
+        for name, dm in modules[1:]:
+
+            n_folds = dm.get_n_folds()
+            if n_folds != reference_folds:
                 raise RuntimeError(
-                    "Incompatible number of targets between DataModules: "
-                    f"{reference_targets} != {dm.get_n_targets()}."
+                    f"Incompatible number of folds: "
+                    f"'{reference_name}' has {reference_folds}, "
+                    f"but '{name}' has {n_folds}."
                 )
 
-        reference_shape = reference.get_sample_shape()
-        for dm in self.data_modules[1:]:
-            shape = dm.get_sample_shape()
+            n_targets = dm.get_n_targets()
+            if n_targets != reference_targets:
+                raise RuntimeError(
+                    f"Incompatible number of targets: "
+                    f"'{reference_name}' has {reference_targets}, "
+                    f"but '{name}' has {n_targets}."
+                )
 
+            shape = dm.get_sample_shape()
             if shape != reference_shape:
                 raise RuntimeError(
-                    "Incompatible sample shapes between DataModules: "
-                    f"{reference_shape} != {shape}."
+                    f"Incompatible sample shapes: "
+                    f"'{reference_name}' has {reference_shape}, "
+                    f"but '{name}' has {shape}."
                 )
 
     @overrides.overrides
@@ -784,7 +792,7 @@ class CombinedDataModule(BaseDataModule):
                 f"(available: 0-{self.get_n_folds() - 1})."
             )
 
-        for dm in self.data_modules:
+        for dm in self.data_modules.values():
             dm.set_fold(fold_idx)
 
         self.fold_idx = fold_idx
@@ -792,12 +800,12 @@ class CombinedDataModule(BaseDataModule):
     @overrides.overrides
     def get_n_folds(self) -> int:
         """Return the number of folds."""
-        return self.data_modules[0].get_n_folds()
+        return next(iter(self.data_modules.values())).get_n_folds()
 
     @overrides.overrides
     def get_n_targets(self) -> int:
         """Return the number of targets."""
-        return self.data_modules[0].get_n_targets()
+        return next(iter(self.data_modules.values())).get_n_targets()
 
     def _combine_loaders(
         self,
@@ -821,7 +829,7 @@ class CombinedDataModule(BaseDataModule):
     def train_dataloader(self) -> torch_data.DataLoader:
         """Return combined training DataLoader."""
         return self._combine_loaders(
-            [dm.train_dataloader() for dm in self.data_modules],
+            [dm.train_dataloader() for dm in self.data_modules.values()],
             shuffle=True,
         )
 
@@ -830,7 +838,7 @@ class CombinedDataModule(BaseDataModule):
         """Return combined validation DataLoader."""
 
         return self._combine_loaders(
-            [dm.val_dataloader() for dm in self.data_modules],
+            [dm.val_dataloader() for dm in self.data_modules.values()],
             shuffle=False,
         )
 
@@ -839,7 +847,7 @@ class CombinedDataModule(BaseDataModule):
         """Return combined test DataLoader."""
 
         return self._combine_loaders(
-            [dm.test_dataloader() for dm in self.data_modules],
+            [dm.test_dataloader() for dm in self.data_modules.values()],
             shuffle=False,
         )
 
@@ -848,7 +856,7 @@ class CombinedDataModule(BaseDataModule):
         """Return combined DataLoader with all data."""
 
         return self._combine_loaders(
-            [dm.all_dataloader() for dm in self.data_modules],
+            [dm.all_dataloader() for dm in self.data_modules.values()],
             shuffle=False,
         )
 
@@ -856,24 +864,28 @@ class CombinedDataModule(BaseDataModule):
     def get_sample_shape(self, subset="train") -> typing.List[int]:
         """Return the common sample shape."""
 
-        return self.data_modules[0].get_sample_shape(subset)
+        return next(iter(self.data_modules.values())).get_sample_shape(subset)
 
     @overrides.overrides
     def to_df(self) -> pd.DataFrame:
         """Return combined description DataFrame."""
 
         return pd.concat(
-            [dm.to_df() for dm in self.data_modules],
+            [dm.to_df() for dm in self.data_modules.values()],
             ignore_index=True,
         )
 
     @overrides.overrides
     def to_compile_df(self) -> pd.DataFrame:
         """Return combined target counts."""
+        return self.to_df().groupby("Target").size().reset_index(name="Qty")
 
-        return (
-            self.to_df()
-            .groupby("Target")
-            .size()
-            .reset_index(name="Qty")
-        )
+    def get_dataloaders_by_module(
+        self,
+        role: ml_cv.FoldRole | str | None = None,
+    ) -> dict[str, torch_data.DataLoader]:
+
+        return {
+            name: dm.get_dataloader_by_role(role)
+            for name, dm in self.data_modules.items()
+        }
