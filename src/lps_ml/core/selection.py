@@ -297,12 +297,12 @@ class ColumnTarget(Target):
 
     def __init__(self,
                  column: str,
-                 map_values: bool = True):
+                 map_values: bool = True,
+                 mapping: dict | None = None):
 
         self.column = column
         self.map_values = map_values
-
-        self._mapping: typing.Dict[typing.Any, int] = {}
+        self._mapping = mapping
 
         super().__init__(n_targets=0, include_others=False)
 
@@ -312,7 +312,7 @@ class ColumnTarget(Target):
             return
 
         if not self._mapping:
-            unique_values = pd.unique(input_df[self.column])
+            unique_values = sorted(input_df[self.column].dropna().unique())
 
             self._mapping = {
                 value: idx

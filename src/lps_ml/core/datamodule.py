@@ -403,7 +403,8 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
 
     def _build_dataloader(self,
                           df: pd.DataFrame | None,
-                          shuffle: bool) -> torch_data.DataLoader:
+                          shuffle: bool,
+                          drop_last: bool = False) -> torch_data.DataLoader:
 
         if df is None:
             df = pd.DataFrame(columns=["id_fragment", "file_id", self.target_column])
@@ -416,13 +417,14 @@ class AudioDataModule(BaseDataModule, utils_hash.Hashable):
             batch_size=self.batch_size,
             shuffle=shuffle,
             generator=g,
-            num_workers=self.num_workers
+            num_workers=self.num_workers,
+            drop_last=drop_last
         )
 
     @overrides.overrides
     def train_dataloader(self) -> torch_data.DataLoader:
         """ Returns a torch_data.DataLoader for train subset. """
-        return self._build_dataloader(self.train_df, True)
+        return self._build_dataloader(self.train_df, True, True)
 
     @overrides.overrides
     def val_dataloader(self) -> torch_data.DataLoader:
