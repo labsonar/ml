@@ -631,7 +631,8 @@ class PairedAudioDataModule:
 
             def _build_dataloader(self,
                                 df: pd.DataFrame,
-                                shuffle: bool) -> torch_data.DataLoader:
+                                shuffle: bool,
+                                drop_last: bool = False) -> torch_data.DataLoader:
 
                 if df is None:
                     raise RuntimeError("df is not initialized. Call setup() first.")
@@ -661,6 +662,7 @@ class PairedAudioDataModule:
                     ),
                     batch_size=self.batch_size,
                     shuffle=shuffle,
+                    drop_last=drop_last,
                     num_workers=self.num_workers
                 )
 

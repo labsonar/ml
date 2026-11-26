@@ -24,6 +24,7 @@ def plot_2d_embedding(
     alpha: float = 0.6,
     highlight: typing.Optional[str] = None,
     highlight_color: str = "black",
+    export_tikz: bool = False
 ) -> None:
     """
     Scatter-plot 2D embedded points, one color per named group, and save
@@ -45,8 +46,9 @@ def plot_2d_embedding(
     plt.tight_layout()
     plt.savefig(filename, dpi=300)
 
-    tikz_filename = os.path.splitext(filename)[0] + ".tikz"
-    tikz.save(tikz_filename)
+    if export_tikz:
+        tikz_filename = os.path.splitext(filename)[0] + ".tikz"
+        tikz.save(tikz_filename)
     plt.close()
 
 def export_umap(
