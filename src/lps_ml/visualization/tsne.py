@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import sklearn.manifold as sklearn
 import tikzplotlib as tikz
 
-def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str, export_tikz: bool = False) -> None:
+def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str, export_tikz: bool = False, save_frags: bool = False) -> None:
     """
     Export data visualized using t-SNE to a file.
 
@@ -44,5 +44,11 @@ def export_tsne(data: np.ndarray, labels: np.ndarray, filename: str, export_tikz
     if export_tikz:
         tikz_filename = os.path.splitext(filename)[0] + ".tikz"
         tikz.save(tikz_filename)
+
+    if save_frags:
+        tsne_filename = os.path.splitext(filename)[0] + "_tsne.npy"
+        np.save(tsne_filename, tsne_data)
+        tsne_filename = os.path.splitext(filename)[0] + "_class.npy"
+        np.save(tsne_filename, labels)
 
     plt.close()
